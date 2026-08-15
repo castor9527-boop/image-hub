@@ -58,6 +58,7 @@ interface AgentProposalCardProps {
   imageModel: ModelId;
   busy?: boolean;
   hideControls?: boolean;
+  autoSelectReferences?: boolean;
   onModelChange: (model: ModelId) => void;
   onApprove: (prompt: string, selectedImageIds: string[], model: ModelId, params: AgentApproveParams) => void;
   onCancel: () => void;
@@ -71,15 +72,20 @@ export function AgentProposalCard({
   imageModel,
   busy = false,
   hideControls = false,
+  autoSelectReferences = false,
   onModelChange,
   onApprove,
   onCancel,
 }: AgentProposalCardProps) {
   const maxRefs = getModelMaxRefImages(imageModel);
   const [prompt, setPrompt] = useState(proposal.prompt);
-  const [selectedIds, setSelectedIds] = useState<string[]>(() =>
-    proposal.referencedImageIds.filter(id => images.some(img => img.imgId === id)).slice(0, Math.max(0, maxRefs))
-  );
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => {
+    const proposalIds = proposal.referencedImageIds.filter(id => images.some(img => img.imgId === id));
+    if (proposalIds.length > 0 || !autoSelectReferences || maxRefs <= 0) {
+      return proposalIds.slice(0, Math.max(0, maxRefs));
+    }
+    return images.slice(-maxRefs).map(img => img.imgId);
+  });
   const [modelPopoverOpen, setModelPopoverOpen] = useState(false);
   const [sizePopoverOpen, setSizePopoverOpen] = useState(false);
   const [aspectPopoverOpen, setAspectPopoverOpen] = useState(false);

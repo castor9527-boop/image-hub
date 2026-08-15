@@ -152,6 +152,18 @@ async function readResponseAsBlob(
   return new Blob(chunks, { type: contentType });
 }
 
+async function getNonImageResponseError(response: Response): Promise<Error> {
+  const contentType = response.headers.get('content-type') || 'unknown content type';
+  let detail = '';
+  try {
+    const text = (await response.text()).trim().replace(/\s+/g, ' ');
+    if (text) detail = `: ${text.slice(0, 240)}`;
+  } catch {
+    // 响应体不可读时保留类型信息即可
+  }
+  return new Error(`图片接口返回了非图片响应（${contentType}）${detail}`);
+}
+
 export async function fetchImageAsBlob(
   url: string,
   maxRetries = 2,
@@ -165,6 +177,10 @@ export async function fetchImageAsBlob(
       idleTimeout.reset();
       const response = await fetch(url, { signal: controller.signal });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType && !contentType.toLowerCase().startsWith('image/')) {
+        throw await getNonImageResponseError(response);
+      }
       idleTimeout.reset();
       const blob = await readResponseAsBlob(response, progress => {
         idleTimeout.reset();

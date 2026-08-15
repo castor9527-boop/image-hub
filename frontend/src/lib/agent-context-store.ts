@@ -341,8 +341,25 @@ export async function getAgentImageRecord(imgId: string): Promise<AgentImageReco
 }
 
 export async function getAgentImageBytes(imgId: string): Promise<Blob | null> {
-  // 1) 先查 nova-upload-cache（上传图片已压缩缓存于此，与其余模式共享）
   const record = await getAgentImageRecord(imgId);
+
+  const blobFromDataUrl = (dataUrl: string, fallbackMimeType: string): Blob | null => {
+    const comma = dataUrl.indexOf(',');
+    if (comma < 0) return null;
+    try {
+      const header = dataUrl.slice(0, comma);
+      const base64 = dataUrl.slice(comma + 1);
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const mime = header.match(/^data:([^;]+)/)?.[1] || fallbackMimeType || 'image/png';
+      return new Blob([bytes], { type: mime });
+    } catch {
+      return null;
+    }
+  };
+
+  // 1) 先查 nova-upload-cache（上传图片已压缩缓存于此，与其余模式共享）
   if (record?.contentHash) {
     try {
       const cacheDb = await openUploadCacheDB();
@@ -350,14 +367,8 @@ export async function getAgentImageBytes(imgId: string): Promise<Blob | null> {
         const cached = await getFromUploadCache(cacheDb, record.contentHash);
         cacheDb.close();
         if (cached?.dataUrl) {
-          const base64 = cached.dataUrl.includes(',') ? cached.dataUrl.split(',')[1] : cached.dataUrl;
-          if (base64) {
-            const mime = cached.mimeType || 'image/png';
-            const binary = atob(base64);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            return new Blob([bytes], { type: mime });
-          }
+          const blob = blobFromDataUrl(cached.dataUrl, cached.mimeType);
+          if (blob) return blob;
         }
       }
     } catch {
@@ -365,7 +376,12 @@ export async function getAgentImageBytes(imgId: string): Promise<Blob | null> {
     }
   }
   // 2) 降级到 nova-image-db（生成图片走此路径）
-  return getStoredBlob(imgId, 0);
+  const stored = await getStoredBlob(imgId, 0);
+  if (stored) return stored;
+
+  // 3) 字节被清理后仍可用登记时保存的缩略图查看和继续编辑
+  if (record?.thumbnail) return blobFromDataUrl(record.thumbnail, record.mimeType);
+  return null;
 }
 
 /** 把图片字节转成可直接喂给生图后端的 base64（不含 data: 前缀） */

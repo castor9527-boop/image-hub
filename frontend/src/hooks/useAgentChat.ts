@@ -23,6 +23,7 @@ import {
   type AgentMessage,
   type AgentImageRecord,
   type AgentProposal,
+  type AgentSkillContext,
 } from '@/lib/agent-chat-config';
 import {
   loadAgentSession,
@@ -108,31 +109,33 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 
 /** 从 Blob 直接生成缩略图 dataUrl，避免全尺寸 base64 转换 */
 async function makePreviewFromBlob(blob: Blob): Promise<{ dataUrl: string; width: number; height: number }> {
+  if (!blob.size) throw new Error('图片内容为空，请重新上传或重新生成');
   try {
     const blobUrl = URL.createObjectURL(blob);
-    const img = await loadImage(blobUrl);
-    URL.revokeObjectURL(blobUrl);
-    const w = img.naturalWidth || img.width;
-    const h = img.naturalHeight || img.height;
-    if (w <= PREVIEW_MAX_SIDE && h <= PREVIEW_MAX_SIDE) {
-      // 小图直接转 dataUrl（尺寸小，不影响性能）
-      const smallDataUrl = await blobToDataUrl(blob);
-      return { dataUrl: smallDataUrl, width: w, height: h };
+    try {
+      const img = await loadImage(blobUrl);
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+      if (w <= PREVIEW_MAX_SIDE && h <= PREVIEW_MAX_SIDE) {
+        const smallDataUrl = await blobToDataUrl(blob);
+        return { dataUrl: smallDataUrl, width: w, height: h };
+      }
+      const scale = PREVIEW_MAX_SIDE / Math.max(w, h);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        const fallback = await blobToDataUrl(blob);
+        return { dataUrl: fallback, width: w, height: h };
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return { dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: w, height: h };
+    } finally {
+      URL.revokeObjectURL(blobUrl);
     }
-    const scale = PREVIEW_MAX_SIDE / Math.max(w, h);
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(w * scale);
-    canvas.height = Math.round(h * scale);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      const fallback = await blobToDataUrl(blob);
-      return { dataUrl: fallback, width: w, height: h };
-    }
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    return { dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: w, height: h };
   } catch {
-    const fallback = await blobToDataUrl(blob);
-    return { dataUrl: fallback, width: 0, height: 0 };
+    throw new Error('图片内容无法解码，请重新上传或重新生成');
   }
 }
 
@@ -173,7 +176,7 @@ async function resultImageToBlob(ref: string): Promise<Blob> {
   return base64ToBlob(ref, 'image/png');
 }
 
-export function useAgentChat() {
+export function useAgentChat(skillContext?: AgentSkillContext) {
   const [ready, setReady] = useState(false);
   const [hasApiKey] = useState(() => hasAnyApiKey());
   const [phase, setPhase] = useState<AgentPhase>('idle');
@@ -210,6 +213,7 @@ export function useAgentChat() {
   const proposalRef = useRef<AgentProposal | null>(null);
   /** 镜像 imageModel state，供 runChat 回调中同步读取 */
   const imageModelRef = useRef(imageModel);
+
   useEffect(() => { imageModelRef.current = imageModel; }, [imageModel]);
 
   const getAgentTextModelConfig = useCallback(() => {
@@ -417,6 +421,7 @@ export function useAgentChat() {
         webSearch: webSearchEnabled && supportsAgentNativeWebSearch(configured.protocol),
         catalog: catalog.map(img => ({ imgId: img.imgId, description: img.description })),
         modelCatalog,
+        skillContext,
       },
       {
         onDelta: token => appendStreamingToken('text', token),
@@ -489,7 +494,7 @@ export function useAgentChat() {
       configured.baseUrl,
     );
     streamHandleRef.current = handle;
-  }, [appendMessage, appendStreamingToken, flushAndCancelRaf, getAgentTextModelConfig, webSearchEnabled]);
+  }, [appendMessage, appendStreamingToken, flushAndCancelRaf, getAgentTextModelConfig, skillContext, webSearchEnabled]);
 
   const sendMessage = useCallback(async (text: string, uploads: PendingUpload[], imageReferences?: string[]) => {
     if (phase !== 'idle') return;
@@ -801,6 +806,9 @@ export function useAgentChat() {
     const startedAt = Date.now();
     const approvedProposal: AgentProposal = {
       action: proposal?.action ?? (selectedImageIds.length > 0 ? 'edit' : 'generate'),
+      skillId: proposal?.skillId || skillContext?.skillId,
+      skillVersion: proposal?.skillVersion || skillContext?.skillVersion,
+      templateId: proposal?.templateId || skillContext?.templateId,
       prompt,
       referencedImageIds: selectedImageIds,
       reason: proposal?.reason ?? '',
@@ -883,7 +891,10 @@ export function useAgentChat() {
         prompt,
         analysisFallbackReason: proposalRef.current?.reason || '',
         proposalData: {
-          action: selectedImageIds.length > 0 ? 'edit' : 'generate',
+          action: approvedProposal.action,
+          skillId: approvedProposal.skillId,
+          skillVersion: approvedProposal.skillVersion,
+          templateId: approvedProposal.templateId,
           prompt,
           referencedImageIds: selectedImageIds,
           model,
@@ -921,7 +932,7 @@ export function useAgentChat() {
       setIsSyncing(false);
       setPhase('proposal');
     }
-  }, [phase, proposal, pollTask, processGeneratedTask]);
+  }, [phase, proposal, pollTask, processGeneratedTask, skillContext]);
 
   const stopStreaming = useCallback(() => {
     streamHandleRef.current?.abort();
@@ -1023,6 +1034,9 @@ export function useAgentChat() {
     // 构建 AgentProposal 重新进入 proposal 阶段
     const newProposal: AgentProposal = {
       action: pd.action,
+      skillId: pd.skillId,
+      skillVersion: pd.skillVersion,
+      templateId: pd.templateId,
       prompt: pd.prompt,
       referencedImageIds: pd.referencedImageIds,
       reason: '重新编辑之前的生图请求。',

@@ -226,48 +226,53 @@ export function AgentMessageBubble({
           </div>
         ) : null}
         {linkedImages.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {linkedImages.map((img, index) => (
-              <div
-                key={img.imgId}
-                className="group relative h-24 w-24 overflow-hidden rounded-lg border border-border"
-                title={img.description}
-              >
-                <button
-                  type="button"
-                  onClick={() => void openPreview(linkedImages, index)}
-                  className="block h-full w-full"
+          <div className="space-y-1">
+            <div className="text-[11px] font-medium text-muted-foreground">
+              {isUser ? '已引用参考图' : '本轮参考图'} · {linkedImages.length} 张
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {linkedImages.map((img, index) => (
+                <div
+                  key={img.imgId}
+                  className="group relative h-24 w-24 overflow-hidden rounded-lg border border-border"
+                  title={img.description}
                 >
-                  <img src={img.thumbnail} alt={img.imgId} className="h-full w-full object-cover" />
-                </button>
-                <span className="pointer-events-none absolute left-1 top-1 rounded bg-black/60 px-1 text-[9px] text-white">
-                  {img.imgId}
-                </span>
-                <ImageHoverActions
-                  payload={makeActionPayload(img)}
-                  onPreview={() => void openPreview(linkedImages, index)}
-                  compact
-                  showDownload
-                  showCopy
-                  showAddToAssets
-                  showUseAsReference
-                  extraActions={(
-                    <button
-                      type="button"
-                      onClick={event => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setDescDialogImg({ imgId: img.imgId, description: img.description || 'AI 未生成描述' });
-                      }}
-                      className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-white/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-                      title="查看描述"
-                    >
-                      <FileText className="h-3 w-3" />
-                    </button>
-                  )}
-                />
-              </div>
-            ))}
+                  <button
+                    type="button"
+                    onClick={() => void openPreview(linkedImages, index)}
+                    className="block h-full w-full"
+                  >
+                    <img src={img.thumbnail} alt={img.imgId} className="h-full w-full object-cover" />
+                  </button>
+                  <span className="pointer-events-none absolute left-1 top-1 rounded bg-black/60 px-1 text-[9px] text-white">
+                    {img.imgId}
+                  </span>
+                  <ImageHoverActions
+                    payload={makeActionPayload(img)}
+                    onPreview={() => void openPreview(linkedImages, index)}
+                    compact
+                    showDownload
+                    showCopy
+                    showAddToAssets
+                    showUseAsReference
+                    extraActions={(
+                      <button
+                        type="button"
+                        onClick={event => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setDescDialogImg({ imgId: img.imgId, description: img.description || 'AI 未生成描述' });
+                        }}
+                        className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-white/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                        title="查看描述"
+                      >
+                        <FileText className="h-3 w-3" />
+                      </button>
+                    )}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         )}
         {!isUser && message.proposalData && linkedImages.length > 0 && (

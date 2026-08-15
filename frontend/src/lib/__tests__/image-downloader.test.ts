@@ -74,6 +74,17 @@ describe('fetchImageAsBlob', () => {
     await expect(fetchImageAsBlob('/image.png', 1)).rejects.toThrow('HTTP 502');
   });
 
+  it('2xx 但返回 JSON 时拒绝把错误响应当作图片', async () => {
+    mockImageFetch(new Response(JSON.stringify({ error: 'upstream not allowed' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+
+    await expect(fetchImageAsBlob('/image.png', 1)).rejects.toThrow(
+      '图片接口返回了非图片响应（application/json）',
+    );
+  });
+
   it('body 读取中断时抛出流错误', async () => {
     const progress: Array<{ loadedBytes: number }> = [];
     mockImageFetch(new Response(makeStream([[1]], 1), {

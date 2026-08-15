@@ -68,6 +68,9 @@ export interface NovaModelRegistry {
 }
 
 const REGISTRY_KEY = 'nova-model-registry';
+export const SERVER_MANAGED_PROVIDER_KEY = '__ggoo_server_managed__';
+export const SERVER_MANAGED_IMAGE_MODEL_ID = 'ggoo-server-image';
+export const SERVER_MANAGED_TEXT_MODEL_ID = 'ggoo-server-text';
 
 export const BUILTIN_IMAGE_PRESETS: Record<BuiltinImagePresetId, BuiltinImagePreset> = {
   'gemini-2.5-flash-image': {
@@ -320,27 +323,40 @@ function ensureDefaults(raw: Partial<DefaultModels> | undefined, imageModels: Im
 
 function getInitialRegistry(): NovaModelRegistry {
   return {
-    imageModels: [],
-    textModels: [],
-    defaults: DEFAULT_DEFAULTS,
+    imageModels: [{
+      id: SERVER_MANAGED_IMAGE_MODEL_ID,
+      protocol: 'openai',
+      name: 'GGOO 图片模型',
+      modelId: 'gpt-image-2',
+      apiKey: SERVER_MANAGED_PROVIDER_KEY,
+      baseUrl: '/api/nova',
+      builtinPreset: 'gpt-image-2',
+      maxRefImages: 16,
+      maxOutputSize: '4K',
+      supportsAdvancedParams: true,
+    }],
+    textModels: [{
+      id: SERVER_MANAGED_TEXT_MODEL_ID,
+      protocol: 'openai-chat-completions',
+      name: 'GGOO 文本模型',
+      modelId: 'gpt-5.6-luna',
+      apiKey: SERVER_MANAGED_PROVIDER_KEY,
+      baseUrl: '/api/nova',
+      note: '由 GGOO 后端统一提供',
+    }],
+    defaults: {
+      textToImage: SERVER_MANAGED_IMAGE_MODEL_ID,
+      imageToImage: SERVER_MANAGED_IMAGE_MODEL_ID,
+      reversePrompt: SERVER_MANAGED_TEXT_MODEL_ID,
+      agent: SERVER_MANAGED_TEXT_MODEL_ID,
+      promptOptimize: SERVER_MANAGED_TEXT_MODEL_ID,
+      imageDescribe: SERVER_MANAGED_TEXT_MODEL_ID,
+    },
   };
 }
 
 export function loadRegistry(): NovaModelRegistry {
-  if (typeof window === 'undefined') {
-    return getInitialRegistry();
-  }
-
-  const raw = localStorage.getItem(REGISTRY_KEY);
-  if (!raw) {
-    return getInitialRegistry();
-  }
-
-  const parsed = JSON.parse(raw) as Partial<NovaModelRegistry>;
-  const imageModels = ensureImageModels(parsed.imageModels);
-  const textModels = ensureTextModels(parsed.textModels);
-  const defaults = ensureDefaults(parsed.defaults, imageModels, textModels);
-  return { imageModels, textModels, defaults };
+  return getInitialRegistry();
 }
 
 export function saveRegistry(registry: NovaModelRegistry): void {

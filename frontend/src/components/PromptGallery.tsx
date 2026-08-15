@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
-import { Search, Loader2, AlertCircle, ExternalLink, ChevronUp } from 'lucide-react';
+import { Search, Loader2, AlertCircle, ChevronUp } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -10,18 +10,22 @@ import {
 import {
   ALL_CATEGORY,
   DEFAULT_CATEGORIES,
-  PROMPT_DATA_SOURCES,
   fetchAllPromptSources,
-  getPromptSourceLabel,
   type PromptWithKey,
 } from '@/lib/prompt-gallery-data';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { seededShuffle } from '@/lib/seeded-shuffle';
+import { fetchSkills, type SkillDefinition, type SkillTemplate } from '@/lib/skill-library';
 
 const PROMPT_GALLERY_STEP = 20;
 const PROMPT_GALLERY_WIDE_STEP = 30;
 
-const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMode?: boolean }) {
+const PromptGallery = memo(function PromptGallery({
+  wideMode = false,
+  onUseSkillTemplate,
+}: {
+  wideMode?: boolean;
+  onUseSkillTemplate?: (skill: SkillDefinition, template: SkillTemplate) => void;
+}) {
   const pageStep = wideMode ? PROMPT_GALLERY_WIDE_STEP : PROMPT_GALLERY_STEP;
   const [allPrompts, setAllPrompts] = useState<PromptWithKey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +33,8 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
   const [searchQuery, setSearchQuery] = useState('');
   const [blacklist, setBlacklist] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORY);
+  const [selectedCaseType, setSelectedCaseType] = useState<'all' | 'featured' | 'regular' | 'skill'>('all');
+  const [skills, setSkills] = useState<SkillDefinition[]>([]);
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [detailPrompt, setDetailPrompt] = useState<PromptWithKey | null>(null);
   const [imagePreview, setImagePreview] = useState<{ prompt: PromptWithKey; initialIndex: number } | null>(null);
@@ -59,6 +65,8 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
         setError(err instanceof Error ? err.message : '提示词广场加载失败');
         setLoading(false);
       });
+
+    fetchSkills().then(setSkills).catch(() => setSkills([]));
   }, []);
 
   const handleShowDetail = useCallback((prompt: PromptWithKey) => {
@@ -78,8 +86,27 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
     });
   }, []);
 
+  const skillPrompts = useMemo<PromptWithKey[]>(() => skills.flatMap((skill) => skill.templates.map((template) => ({
+    id: template.id,
+    uniqueKey: `skill:${skill.id}:${template.id}`,
+    title: template.name,
+    content: template.description,
+    images: template.previewImages || [],
+    tags: ['Skills', skill.name, template.recommendedRatio],
+    contributor: skill.id,
+    notes: `${template.requiredInput} · 推荐比例 ${template.recommendedRatio}`,
+    source: `skill:${skill.id}`,
+    category: 'Skills 创作模板案例',
+    recommendedRatio: template.recommendedRatio,
+    referenceRoles: [template.requiredInput],
+    caseType: 'skill' as const,
+    skillId: skill.id,
+    skillTemplateId: template.id,
+    skillName: skill.name,
+  }))), [skills]);
+
   const baseFilteredPrompts = useMemo(() => {
-    let prompts = allPrompts;
+    let prompts = [...allPrompts, ...skillPrompts];
 
     if (blacklist.length > 0) {
       prompts = prompts.filter((prompt) => {
@@ -102,6 +129,10 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
       prompts = prompts.filter((prompt) => prompt.category === selectedCategory);
     }
 
+    if (selectedCaseType !== 'all') {
+      prompts = prompts.filter((prompt) => (prompt.caseType || 'regular') === selectedCaseType);
+    }
+
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       prompts = prompts.filter((prompt) => (
@@ -112,16 +143,16 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
     }
 
     return prompts;
-  }, [allPrompts, blacklist, searchQuery, selectedCategory]);
+  }, [allPrompts, blacklist, searchQuery, selectedCategory, selectedCaseType]);
 
   const filteredPrompts = useMemo(() => {
-    const seed = `${searchQuery}\0${blacklist.join('\0')}\0${baseFilteredPrompts.map((prompt) => prompt.uniqueKey).join('\0')}`;
+    const seed = `${searchQuery}\0${selectedCategory}\0${selectedCaseType}\0${blacklist.join('\0')}\0${baseFilteredPrompts.map((prompt) => prompt.uniqueKey).join('\0')}`;
     return seededShuffle(baseFilteredPrompts, seed);
-  }, [baseFilteredPrompts, blacklist, searchQuery]);
+  }, [baseFilteredPrompts, blacklist, searchQuery, selectedCategory, selectedCaseType]);
 
   useEffect(() => {
     queueMicrotask(() => setDisplayCount(pageStep));
-  }, [pageStep, searchQuery, selectedCategory]);
+  }, [pageStep, searchQuery, selectedCategory, selectedCaseType]);
 
   useEffect(() => {
     if (!loadMoreRef.current) return;
@@ -182,6 +213,24 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
           </div>
 
           <div className="flex flex-wrap gap-2">
+            {[
+              { value: 'all' as const, label: '全部案例' },
+              { value: 'featured' as const, label: '精选案例' },
+              { value: 'regular' as const, label: '常规案例' },
+              { value: 'skill' as const, label: 'Skills 创作模板案例' },
+            ].map((caseType) => (
+              <Badge
+                key={caseType.value}
+                variant={selectedCaseType === caseType.value ? 'default' : 'secondary'}
+                className="cursor-pointer px-3 py-1 transition-colors hover:bg-primary/80"
+                onClick={() => setSelectedCaseType(caseType.value)}
+              >
+                {caseType.label}
+              </Badge>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
             {categories.map((category) => (
               <Badge
                 key={category}
@@ -195,33 +244,10 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex items-center text-sm">
           <span className="text-muted-foreground">
             找到 {filteredPrompts.length} 个提示词{displayedPrompts.length < filteredPrompts.length ? ` · 显示 ${displayedPrompts.length} 个` : ''}
           </span>
-          <Popover>
-            <PopoverTrigger className="flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground">
-              <span>提示词来源</span>
-              <ExternalLink className="w-3 h-3" />
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-72 p-2">
-              <p className="px-2 pb-1.5 text-xs font-medium text-muted-foreground">提示词来源（{PROMPT_DATA_SOURCES.length}）</p>
-              <div className="space-y-0.5">
-                {PROMPT_DATA_SOURCES.map((source) => (
-                  <a
-                    key={source.name}
-                    href={source.sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
-                  >
-                    <span className="truncate">{getPromptSourceLabel(source.sourceUrl)}</span>
-                    <ExternalLink className="w-3 h-3 flex-shrink-0 text-muted-foreground" />
-                  </a>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
         </div>
 
         <div className={`grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 ${wideMode ? '2xl:grid-cols-5' : ''}`}>
@@ -233,6 +259,13 @@ const PromptGallery = memo(function PromptGallery({ wideMode = false }: { wideMo
               onShowImages={(initialIndex) => handleShowImages(prompt, initialIndex)}
               imageCache={imageCache}
               onImageLoad={handleImageLoad}
+              onUseTemplate={prompt.caseType === 'skill' && prompt.skillId && prompt.skillTemplateId
+                ? () => {
+                    const skill = skills.find((item) => item.id === prompt.skillId);
+                    const template = skill?.templates.find((item) => item.id === prompt.skillTemplateId);
+                    if (skill && template) onUseSkillTemplate?.(skill, template);
+                  }
+                : undefined}
             />
           ))}
         </div>

@@ -14,6 +14,12 @@ export type PromptWithKey = PromptGalleryItem & { uniqueKey: string };
 
 export const PROMPT_DATA_SOURCES: PromptDataSource[] = [
   {
+    name: 'ggoo-image2-library',
+    url: '/api/ggoo/prompt-gallery/image2',
+    sourceUrl: '',
+    type: 'ggoo-image2-local',
+  },
+  {
     name: 'nanobanana',
     url: 'https://proxy.ccode.vip/https/raw.githubusercontent.com/unknowlei/nanobanana-website/refs/heads/main/public/data.json',
     sourceUrl: 'https://github.com/unknowlei/nanobanana-website',
@@ -371,10 +377,35 @@ async function parseDavidWuJson(source: PromptDataSource): Promise<PromptWithKey
   return prompts;
 }
 
+async function parseGgooImage2Local(source: PromptDataSource): Promise<PromptWithKey[]> {
+  const res = await fetch(source.url);
+  if (!res.ok) return [];
+  const json = await res.json();
+  if (!Array.isArray(json)) return [];
+
+  return json
+    .filter((item: Partial<PromptGalleryItem>) => item.title && item.content)
+    .map((item: PromptGalleryItem, index: number) => ({
+      ...item,
+      id: item.id || `${source.name}-${index}`,
+      images: Array.isArray(item.images) ? item.images : [],
+      tags: Array.isArray(item.tags) ? item.tags : [],
+      contributor: item.contributor || '',
+      notes: item.notes || '',
+      source: source.name,
+      sourceUrl: undefined,
+      caseType: item.caseType || 'featured',
+      reviewStatus: item.reviewStatus || 'published',
+      uniqueKey: `${source.name}-${item.id || index}`,
+    }));
+}
+
 // --- Fetch all sources in parallel ---
 
 function fetchSource(source: PromptDataSource): Promise<PromptWithKey[]> {
   switch (source.type) {
+    case 'ggoo-image2-local':
+      return parseGgooImage2Local(source);
     case 'nanobanana':
       return fetch(source.url)
         .then(res => res.ok ? res.json() : Promise.reject())

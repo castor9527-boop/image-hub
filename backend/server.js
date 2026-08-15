@@ -7,7 +7,12 @@ const next = process.env.NODE_ENV !== 'production' ? require('next') : null;
 const Database = require('better-sqlite3');
 const { WebSocketServer } = require('ws');
 
+const ADMIN_SESSION_COOKIE = 'ggoo_admin_session';
+const ADMIN_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const adminSessions = new Map();
+
 const ENV_FILE_PATH = path.join(process.cwd(), '.env');
+const SERVER_MANAGED_PROVIDER_KEY = '__ggoo_server_managed__';
 const TASK_STATUS = {
   QUEUED: '排队中',
   LEGACY_QUEUED: 'queued',
@@ -52,6 +57,11 @@ function parseEnvFile(filePath = ENV_FILE_PATH) {
   return values;
 }
 
+function getExternalEnvFilePath() {
+  const configuredPath = String(process.env.GGOO_CONFIG_FILE || '').trim();
+  return configuredPath ? path.resolve(configuredPath) : '';
+}
+
 // .env 运行期读取加 1 秒 TTL 缓存：原本每次调用都同步 readFileSync，而
 // getQueueStats / 建任务 / 队列广播 / WS 订阅 / 出图前都走它（单次 getQueueStats
 // 触发 3 次读盘），在事件循环上造成不必要的同步 IO。1 秒对"改 .env 实时生效"
@@ -61,8 +71,9 @@ let _runtimeEnvCache = { values: null, expiresAt: 0 };
 function getRuntimeEnv() {
   const now = Date.now();
   if (!_runtimeEnvCache.values || now >= _runtimeEnvCache.expiresAt) {
+    const externalValues = getExternalEnvFilePath() ? parseEnvFile(getExternalEnvFilePath()) : {};
     _runtimeEnvCache = {
-      values: { ...process.env, ...parseEnvFile() },
+      values: { ...externalValues, ...parseEnvFile(), ...process.env },
       expiresAt: now + 1000,
     };
   }
@@ -70,12 +81,47 @@ function getRuntimeEnv() {
 }
 
 function loadEnvFile() {
+  const externalValues = getExternalEnvFilePath() ? parseEnvFile(getExternalEnvFilePath()) : {};
   const values = parseEnvFile();
+  Object.assign(values, externalValues, parseEnvFile());
   for (const [key, value] of Object.entries(values)) {
     if (!(key in process.env)) {
       process.env[key] = value;
     }
   }
+}
+
+function getServerManagedProvider() {
+  const env = getRuntimeEnv();
+  const apiKey = String(env.GGOO_SERVICE_API_KEY || '').trim();
+  const imageApiKey = String(env.GGOO_IMAGE_API_KEY || apiKey).trim();
+  const baseUrl = normalizeBaseUrl(env.GGOO_GATEWAY_BASE_URL || env.GGOO_API_BASE_URL || '');
+  const imageBaseUrl = normalizeBaseUrl(env.GGOO_IMAGE_GATEWAY_BASE_URL || env.GGOO_IMAGE_API_BASE_URL || baseUrl);
+  return {
+    configured: Boolean(apiKey && baseUrl && imageApiKey && imageBaseUrl),
+    apiKey,
+    imageApiKey,
+    baseUrl,
+    imageBaseUrl,
+    imageProtocol: 'openai',
+    textProtocol: String(env.GGOO_TEXT_PROTOCOL || 'openai-chat-completions').trim() || 'openai-chat-completions',
+    imageModel: String(env.GGOO_IMAGE_MODEL || 'gpt-image-2').trim() || 'gpt-image-2',
+    textModel: String(env.GGOO_MODEL || 'gpt-5.6-luna').trim() || 'gpt-5.6-luna',
+  };
+}
+
+function applyServerManagedProvider(body) {
+  const provider = getServerManagedProvider();
+  if (!provider.configured) return body;
+  return {
+    ...body,
+    apiKey: provider.imageApiKey,
+    baseUrl: provider.imageBaseUrl,
+    protocol: provider.imageProtocol,
+    model: body.mode === 'image-to-image' || body.mode === 'text-to-image'
+      ? provider.imageModel
+      : provider.textModel,
+  };
 }
 
 loadEnvFile();
@@ -112,6 +158,22 @@ function assertAllowedUpstreamUrl(url) {
     .split(',')
     .map(value => value.trim().toLowerCase())
     .filter(Boolean);
+  const managedGatewayUrl = String(env.GGOO_GATEWAY_BASE_URL || env.GGOO_API_BASE_URL || '').trim();
+  if (managedGatewayUrl) {
+    try {
+      configuredHosts.push(new URL(managedGatewayUrl).hostname.toLowerCase());
+    } catch {
+      // Invalid managed gateway URLs are rejected by the upstream URL check below.
+    }
+  }
+  const managedImageGatewayUrl = String(env.GGOO_IMAGE_GATEWAY_BASE_URL || env.GGOO_IMAGE_API_BASE_URL || '').trim();
+  if (managedImageGatewayUrl) {
+    try {
+      configuredHosts.push(new URL(managedImageGatewayUrl).hostname.toLowerCase());
+    } catch {
+      // Invalid image gateway URLs are rejected by the upstream URL check below.
+    }
+  }
   const developmentHosts = IS_DEV ? ['localhost', '127.0.0.1', '::1'] : [];
   const allowedHosts = new Set([...configuredHosts, ...developmentHosts]);
   if (allowedHosts.size === 0 || !allowedHosts.has(parsed.hostname.toLowerCase())) {
@@ -128,6 +190,109 @@ function hashPromptGalleryPassword(password) {
   return createHash('sha256')
     .update(`${PROMPT_GALLERY_PASSWORD_SALT}${String(password || '')}`)
     .digest('hex');
+}
+
+function secretsMatch(leftValue, rightValue) {
+  const left = Buffer.from(hashPromptGalleryPassword(leftValue), 'hex');
+  const right = Buffer.from(hashPromptGalleryPassword(rightValue), 'hex');
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function readCookie(req, name) {
+  const cookies = String(req.headers.cookie || '').split(';');
+  const prefix = `${name}=`;
+  const value = cookies.find(cookie => cookie.trim().startsWith(prefix));
+  if (!value) return '';
+  try {
+    return decodeURIComponent(value.trim().slice(prefix.length));
+  } catch {
+    return '';
+  }
+}
+
+function isAdminSessionValid(req) {
+  const token = readCookie(req, ADMIN_SESSION_COOKIE);
+  const expiresAt = adminSessions.get(token);
+  if (!token || !expiresAt) return false;
+  if (expiresAt <= Date.now()) {
+    adminSessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+function requireAdminSession(req, res) {
+  if (isAdminSessionValid(req)) return true;
+  sendJson(res, 401, { error: '需要管理员登录' });
+  return false;
+}
+
+function getImage2CasesPath() {
+  return path.join(__dirname, 'image2-cases.json');
+}
+
+function readImage2Cases() {
+  const casesPath = getImage2CasesPath();
+  if (!fs.existsSync(casesPath)) return [];
+  const data = JSON.parse(fs.readFileSync(casesPath, 'utf8'));
+  return Array.isArray(data) ? data : [];
+}
+
+function getImage2AssetPath(name) {
+  let decodedName;
+  try {
+    decodedName = decodeURIComponent(name || '');
+  } catch {
+    return null;
+  }
+  if (!decodedName || decodedName !== path.basename(decodedName) || decodedName.includes('..')) return null;
+  const assetDir = path.resolve(__dirname, 'data', 'image2-assets');
+  const filePath = path.resolve(assetDir, decodedName);
+  if (!filePath.startsWith(`${assetDir}${path.sep}`) || !fs.existsSync(filePath)) return null;
+  return filePath;
+}
+
+function getSkillAssetPath(name) {
+  let decodedName;
+  try {
+    decodedName = decodeURIComponent(name || '');
+  } catch {
+    return null;
+  }
+  if (!decodedName || decodedName !== path.basename(decodedName) || decodedName.includes('..')) return null;
+  const assetDir = path.resolve(__dirname, 'data', 'skill-assets');
+  const filePath = path.resolve(assetDir, decodedName);
+  if (!filePath.startsWith(`${assetDir}${path.sep}`) || !fs.existsSync(filePath)) return null;
+  return filePath;
+}
+
+function writeImage2Cases(cases) {
+  const casesPath = getImage2CasesPath();
+  const tempPath = `${casesPath}.tmp`;
+  fs.writeFileSync(tempPath, `${JSON.stringify(cases, null, 2)}\n`);
+  fs.renameSync(tempPath, casesPath);
+}
+
+function getSkillRegistryPath() {
+  return path.join(__dirname, 'skills', 'registry.json');
+}
+
+function readSkillRegistry() {
+  const registryPath = getSkillRegistryPath();
+  if (!fs.existsSync(registryPath)) return [];
+  const data = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+  return Array.isArray(data.skills) ? data.skills : [];
+}
+
+function getSkillById(skillId) {
+  if (!/^[a-z0-9-]+$/i.test(skillId || '')) return null;
+  return readSkillRegistry().find(skill => skill.id === skillId) || null;
+}
+
+function readSkillRuntime(skill) {
+  const skillPath = path.join(__dirname, 'skills', skill.id, 'SKILL.md');
+  if (!fs.existsSync(skillPath)) return '';
+  return fs.readFileSync(skillPath, 'utf8');
 }
 
 const PORT = Number(process.env.PORT || 3000);
@@ -844,6 +1009,7 @@ function validateCreatePayload(body) {
 }
 
 function createTask(body, req) {
+  body = applyServerManagedProvider(body);
   validateCreatePayload(body);
   const limitConfig = getLimitConfig();
   if (isShuttingDown || isRejectNewTasksEnabled()) {
@@ -1027,7 +1193,7 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
       const extension = mimeType.split('/')[1] || 'png';
       const bytes = Buffer.from(img.data, 'base64');
       const blob = new Blob([bytes], { type: mimeType });
-      formData.append('image', blob, `image-${index}.${extension}`);
+      formData.append('image[]', blob, `image-${index}.${extension}`);
     });
 
     return {
@@ -1896,6 +2062,133 @@ async function handleApi(req, res, pathname) {
       return true;
     }
 
+    if (req.method === 'GET' && apiPathname === '/api/ggoo/prompt-gallery/image2') {
+      try {
+        sendJson(res, 200, readImage2Cases().filter(item => (item.reviewStatus || 'published') === 'published'));
+      } catch {
+        sendJson(res, 200, []);
+      }
+      return true;
+    }
+
+    if (req.method === 'GET' && apiPathname === '/api/ggoo/skills') {
+      sendJson(res, 200, { skills: readSkillRegistry() });
+      return true;
+    }
+
+    const skillRuntimeMatch = apiPathname.match(/^\/api\/ggoo\/skills\/([^/]+)\/runtime$/);
+    if (req.method === 'GET' && skillRuntimeMatch) {
+      const skill = getSkillById(decodeURIComponent(skillRuntimeMatch[1]));
+      if (!skill) {
+        sendJson(res, 404, { error: 'Skill 不存在' });
+        return true;
+      }
+      const query = new URL(req.url || '/', `http://${req.headers.host || `${HOSTNAME}:${PORT}`}`).searchParams;
+      const templateId = query.get('templateId') || '';
+      const template = Array.isArray(skill.templates) ? skill.templates.find(item => item.id === templateId) : null;
+      if (!template) {
+        sendJson(res, 404, { error: 'Skill 模板不存在' });
+        return true;
+      }
+      sendJson(res, 200, {
+        skillId: skill.id,
+        skillVersion: skill.version,
+        skillName: skill.name,
+        templateId: template.id,
+        templateName: template.name,
+        templateDescription: template.description,
+        recommendedRatio: template.recommendedRatio,
+        requiredInput: template.requiredInput,
+        instructions: readSkillRuntime(skill),
+      });
+      return true;
+    }
+
+    const skillAssetMatch = apiPathname.match(/^\/api\/ggoo\/skills\/assets\/([^/]+)$/);
+    if (req.method === 'GET' && skillAssetMatch) {
+      const assetPath = getSkillAssetPath(skillAssetMatch[1]);
+      if (!assetPath) {
+        sendJson(res, 404, { error: 'Skill 预览图片不存在' });
+        return true;
+      }
+      pipeFileToResponse(res, assetPath, 200, {
+        'Content-Type': getContentType(assetPath),
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      });
+      return true;
+    }
+
+    const image2AssetMatch = apiPathname.match(/^\/api\/ggoo\/prompt-gallery\/image2\/assets\/([^/]+)$/);
+    if (req.method === 'GET' && image2AssetMatch) {
+      const assetPath = getImage2AssetPath(image2AssetMatch[1]);
+      if (!assetPath) {
+        sendJson(res, 404, { error: '案例图片不存在' });
+        return true;
+      }
+      pipeFileToResponse(res, assetPath, 200, {
+        'Content-Type': getContentType(assetPath),
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      });
+      return true;
+    }
+
+    if (req.method === 'POST' && apiPathname === '/api/ggoo/admin/prompt-gallery/login') {
+      const configuredPassword = String(getRuntimeEnv().GGOO_ADMIN_PASSWORD || '').trim();
+      if (!configuredPassword) {
+        sendJson(res, 503, { error: '管理员后台尚未配置' });
+        return true;
+      }
+      const body = await readJsonBody(req);
+      const password = String(body?.password || '');
+      const ok = secretsMatch(password, configuredPassword);
+      if (!ok) {
+        sendJson(res, 401, { error: '管理员密码错误' });
+        return true;
+      }
+      const token = randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', '');
+      adminSessions.set(token, Date.now() + ADMIN_SESSION_TTL_MS);
+      sendJson(res, 200, { ok: true }, {
+        'Set-Cookie': `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(ADMIN_SESSION_TTL_MS / 1000)}${IS_DEV ? '' : '; Secure'}`,
+      });
+      return true;
+    }
+
+    if (req.method === 'POST' && apiPathname === '/api/ggoo/admin/prompt-gallery/logout') {
+      adminSessions.delete(readCookie(req, ADMIN_SESSION_COOKIE));
+      sendJson(res, 200, { ok: true }, {
+        'Set-Cookie': `${ADMIN_SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${IS_DEV ? '' : '; Secure'}`,
+      });
+      return true;
+    }
+
+    if (apiPathname === '/api/ggoo/admin/prompt-gallery' && req.method === 'GET') {
+      if (!requireAdminSession(req, res)) return true;
+      sendJson(res, 200, { cases: readImage2Cases() });
+      return true;
+    }
+
+    const adminCaseMatch = apiPathname.match(/^\/api\/ggoo\/admin\/prompt-gallery\/([^/]+)$/);
+    if (adminCaseMatch && req.method === 'PATCH') {
+      if (!requireAdminSession(req, res)) return true;
+      const caseId = decodeURIComponent(adminCaseMatch[1]);
+      const body = await readJsonBody(req);
+      const allowedStatuses = new Set(['draft', 'pending', 'published', 'rejected', 'archived']);
+      if (!allowedStatuses.has(body?.reviewStatus)) {
+        sendJson(res, 400, { error: '审核状态无效' });
+        return true;
+      }
+      const cases = readImage2Cases();
+      const index = cases.findIndex(item => item.id === caseId);
+      if (index < 0) {
+        sendJson(res, 404, { error: '案例不存在' });
+        return true;
+      }
+      cases[index] = { ...cases[index], reviewStatus: body.reviewStatus };
+      writeImage2Cases(cases);
+      sendJson(res, 200, { case: cases[index] });
+      return true;
+    }
+
     if (req.method === 'GET' && apiPathname === '/api/nova/blacklist') {
       const blacklistPath = path.join(__dirname, 'blacklist.json');
       try {
@@ -1914,6 +2207,7 @@ async function handleApi(req, res, pathname) {
 
     if (req.method === 'GET' && apiPathname === '/api/nova/config') {
       const env = getRuntimeEnv();
+      const serverProvider = getServerManagedProvider();
       const rawMode = String(env.PROMPT_GALLERY_MODE || '2').trim();
       const mode = ['1', '2', '3'].includes(rawMode) ? rawMode : '2';
       sendJson(
@@ -1922,6 +2216,8 @@ async function handleApi(req, res, pathname) {
         {
           promptGalleryMode: mode,
           promptGalleryPasswordEnabled: String(env.PROMPT_GALLERY_PASSWORD || '').trim().length > 0,
+          serverManagedProvider: serverProvider.configured,
+          imageModel: serverProvider.configured ? serverProvider.imageModel : undefined,
         },
         {
           'Cache-Control': 'no-store, no-cache, must-revalidate',
@@ -1942,7 +2238,7 @@ async function handleApi(req, res, pathname) {
 
       const body = await readJsonBody(req);
       const password = String(body?.password || '');
-      const ok = hashPromptGalleryPassword(password) === hashPromptGalleryPassword(expected);
+      const ok = secretsMatch(password, expected);
       sendJson(res, 200, { ok });
       return true;
     }
@@ -1994,7 +2290,11 @@ async function handleApi(req, res, pathname) {
     // ===== 文本 AI 代理（流式 + 非流式，多文本协议） =====
     if (req.method === 'POST' && apiPathname === '/api/nova/proxy/text') {
       try {
-        const body = await readJsonBody(req);
+        const rawBody = await readJsonBody(req);
+        const provider = getServerManagedProvider();
+        const body = provider.configured
+          ? { ...rawBody, protocol: provider.textProtocol, baseUrl: provider.baseUrl, apiKey: provider.apiKey, model: provider.textModel }
+          : rawBody;
         const { protocol, baseUrl, apiKey, model, stream, requestBody } = body;
         if (!baseUrl || !apiKey) {
           sendJson(res, 400, { error: 'Missing baseUrl or apiKey' });
@@ -2029,7 +2329,7 @@ async function handleApi(req, res, pathname) {
 
         let forwardedBody;
         if (requestBody) {
-          forwardedBody = requestBody;
+          forwardedBody = { ...requestBody, model };
         } else {
           const clean = { ...body };
           delete clean.protocol;
@@ -2084,9 +2384,10 @@ async function handleApi(req, res, pathname) {
     if (req.method === 'GET' && apiPathname === '/api/nova/proxy/models') {
       try {
         const parsed = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-        const baseUrl = parsed.searchParams.get('baseUrl');
-        const apiKey = parsed.searchParams.get('apiKey');
-        const protocol = parsed.searchParams.get('protocol') || 'openai';
+        const provider = getServerManagedProvider();
+        const baseUrl = provider.configured ? provider.baseUrl : parsed.searchParams.get('baseUrl');
+        const apiKey = provider.configured ? provider.apiKey : parsed.searchParams.get('apiKey');
+        const protocol = provider.configured ? provider.textProtocol : (parsed.searchParams.get('protocol') || 'openai');
         if (!baseUrl || !apiKey) {
           sendJson(res, 400, { error: 'Missing baseUrl or apiKey' });
           return true;

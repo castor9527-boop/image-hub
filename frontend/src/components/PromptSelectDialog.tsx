@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
-import { Search, Loader2, Check, ExternalLink } from 'lucide-react';
+import { Search, Loader2, Check } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -174,18 +174,6 @@ export const PromptSelectDialog = memo(function PromptSelectDialog({
                         <Badge variant="outline" className="text-xs px-1.5 py-0">
                           {prompt.category}
                         </Badge>
-                      )}
-                      {prompt.sourceUrl && (
-                        <a
-                          href={prompt.sourceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-muted-foreground hover:text-foreground transition-colors"
-                          title="来源"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
                       )}
                     </div>
                     <Button variant="ghost" size="xs" className="h-6 px-2">

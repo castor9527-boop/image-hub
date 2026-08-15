@@ -83,6 +83,7 @@ test('retries an unsupported partial-images request without stream parameters', 
       NOVA_TASK_DB: path.join(tempDir, 'tasks.sqlite'),
       NOVA_IMAGE_DIR: path.join(tempDir, 'images'),
       NOVA_IMAGE_PARTIAL_IMAGES: '2',
+      NOVA_ALLOWED_API_HOSTS: '127.0.0.1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

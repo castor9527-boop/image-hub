@@ -1,0 +1,166 @@
+{
+  "skills": [
+    {
+      "id": "scenes-gathered-zine-v1-3",
+      "name": "实景拼贴",
+      "description": "保留真实照片作为视觉锚点，将场景转化为留白、抽象插画和撕纸边缘构成的海报。",
+      "version": "1.3",
+      "input": {
+        "minReferenceImages": 1,
+        "maxReferenceImages": 1,
+        "recommendedRatios": ["3:5", "5:3"]
+      },
+      "templates": [
+        {
+          "id": "scenes-gathered-default",
+          "name": "实景拼贴海报",
+          "description": "真景为锚、插画成场、色彩成结构、撕纸成界。",
+          "recommendedRatio": "3:5",
+          "requiredInput": "1 张原始照片",
+          "previewImages": ["/api/ggoo/skills/assets/scenes-gathered-default.png"]
+        }
+      ]
+    },
+    {
+      "id": "scene-distillation-zine-v1-3",
+      "name": "影像蒸馏",
+      "description": "提取照片的主体、情绪和空间关系，重新创作成一张独立的艺术海报。",
+      "version": "1.3",
+      "input": {
+        "minReferenceImages": 1,
+        "maxReferenceImages": 1,
+        "recommendedRatios": ["3:5", "5:3"]
+      },
+      "templates": [
+        {
+          "id": "scene-distillation-default",
+          "name": "影像情绪海报",
+          "description": "保留语义和情绪来源，不保留原照片画面，重新构成艺术作品。",
+          "recommendedRatio": "3:5",
+          "requiredInput": "1 张原始照片",
+          "previewImages": []
+        }
+      ]
+    },
+    {
+      "id": "travel-photo-soft-abstraction",
+      "name": "旅行照片柔化抽象",
+      "description": "保留原始旅行照片作为上半部，下半部提取空间关系和色彩节奏生成干净的抽象编辑面板。",
+      "version": "1.0",
+      "input": {"minReferenceImages": 1, "maxReferenceImages": 1, "recommendedRatios": ["2:3", "3:4"]},
+      "templates": [{
+        "id": "travel-photo-soft-abstraction-default",
+        "name": "旅行照片柔化抽象",
+        "description": "原图保真、下方抽象、留白克制，适合旅行照片和风景内容。",
+        "recommendedRatio": "2:3",
+        "requiredInput": "1 张旅行照片",
+        "previewImages": ["/api/ggoo/skills/assets/travel-photo-soft-abstraction.png"]
+      }]
+    },
+    {
+      "id": "paper-spirit-zine",
+      "name": "纸张精灵杂志风",
+      "description": "让原始照片保持情绪主体，下方纸面从照片中的山脊、风、影子或水线提取一个有生命感的后像。",
+      "version": "1.0",
+      "input": {"minReferenceImages": 1, "maxReferenceImages": 1, "recommendedRatios": ["3:4", "4:5"]},
+      "templates": [{
+        "id": "paper-spirit-zine-default",
+        "name": "纸张精灵杂志海报",
+        "description": "照片为主、纸面为辅，适合自然、人物和具有情绪留白的杂志视觉。",
+        "recommendedRatio": "4:5",
+        "requiredInput": "1 张原始照片",
+        "previewImages": ["/api/ggoo/skills/assets/paper-spirit-zine.png"]
+      }]
+    },
+    {
+      "id": "ai-editorial-print-studio",
+      "name": "AI 编辑印刷室",
+      "description": "先分析图片类型，再按食品、产品、人物、建筑或风景选择编辑印刷构图、材质和视觉审查规则。",
+      "version": "1.0",
+      "input": {"minReferenceImages": 1, "maxReferenceImages": 1, "recommendedRatios": ["1:1", "4:5", "3:4"]},
+      "templates": [{
+        "id": "ai-editorial-print-studio-default",
+        "name": "编辑印刷视觉",
+        "description": "照片分析、构图控制、印刷质感和视觉复核组成的多阶段工作流。",
+        "recommendedRatio": "4:5",
+        "requiredInput": "1 张原始照片",
+        "previewImages": []
+      }]
+    },
+    {
+      "id": "eastern-ink-photo-diptych",
+      "name": "东方水墨摄影双联画",
+      "description": "上方保留真实摄影，下方把同一场景提炼成克制的东方水墨抽象，形成高留白的编辑双联画。",
+      "version": "1.0",
+      "input": {"minReferenceImages": 1, "maxReferenceImages": 1, "recommendedRatios": ["3:5"]},
+      "templates": [{
+        "id": "eastern-ink-photo-diptych-default",
+        "name": "东方水墨摄影双联画",
+        "description": "真实照片与低饱和水墨抽象上下对应，适合风景、建筑和安静纪实照片。",
+        "recommendedRatio": "3:5",
+        "requiredInput": "1 张风景、建筑或旅行照片",
+        "previewImages": []
+      }]
+    },
+    {
+      "id": "dreamy-motion-editorial",
+      "name": "梦幻动态编辑风",
+      "description": "从照片中提取主体和情绪，通过柔焦、慢门拖影、玻璃反射和电影感留白重建高级编辑画面。",
+      "version": "1.0",
+      "input": {"minReferenceImages": 1, "maxReferenceImages": 1, "recommendedRatios": ["4:5", "9:16", "16:9"]},
+      "templates": [{
+        "id": "dreamy-motion-editorial-default",
+        "name": "梦幻动态编辑海报",
+        "description": "适合人物、车窗、湖面和青春氛围的柔光动态视觉。",
+        "recommendedRatio": "4:5",
+        "requiredInput": "1 张原始照片",
+        "previewImages": []
+      }]
+    },
+    {
+      "id": "photo-ink-echo",
+      "name": "照片水墨回响",
+      "description": "上方保留未经重绘的原始照片，下方生成很小的照片衍生水彩记忆图案，以暖白留白形成安静的编辑构图。",
+      "version": "1.0",
+      "input": {"minReferenceImages": 1, "maxReferenceImages": 1, "recommendedRatios": ["9:16"]},
+      "templates": [{
+        "id": "photo-ink-echo-default",
+        "name": "照片水墨回响",
+        "description": "原照片与小型水彩记忆图案上下呼应，适合风景、建筑和旅行摄影。",
+        "recommendedRatio": "9:16",
+        "requiredInput": "1 张原始照片",
+        "previewImages": ["/api/ggoo/skills/assets/photo-ink-echo.jpg"]
+      }]
+    },
+    {
+      "id": "photo-abstract-editorial",
+      "name": "照片抽象编辑风",
+      "description": "保持上传照片作为主体原图，在下方建立由照片空间、色调和关系提取出的克制抽象记忆面板。",
+      "version": "1.0",
+      "input": {"minReferenceImages": 1, "maxReferenceImages": 1, "recommendedRatios": ["2:3", "3:4"]},
+      "templates": [{
+        "id": "photo-abstract-editorial-default",
+        "name": "照片抽象编辑海报",
+        "description": "原照片加照片衍生抽象面板，适合极简档案感和诗意英文标题。",
+        "recommendedRatio": "2:3",
+        "requiredInput": "1 张原始照片",
+        "previewImages": ["/api/ggoo/skills/assets/photo-abstract-editorial.jpg"]
+      }]
+    },
+    {
+      "id": "photo-to-zine-postcard",
+      "name": "照片转杂志明信片",
+      "description": "将一张照片转成双面 2:3 杂志明信片，包含原图、照片衍生手绘图案、元数据和三枚取色卡。",
+      "version": "1.0",
+      "input": {"minReferenceImages": 1, "maxReferenceImages": 1, "recommendedRatios": ["2:3"]},
+      "templates": [{
+        "id": "photo-to-zine-postcard-default",
+        "name": "照片杂志明信片",
+        "description": "照片、手绘后像、取色卡和明信片信息组成的双面编辑视觉。",
+        "recommendedRatio": "2:3",
+        "requiredInput": "1 张原始照片",
+        "previewImages": ["/api/ggoo/skills/assets/photo-to-zine-postcard.png"]
+      }]
+    }
+  ]
+}

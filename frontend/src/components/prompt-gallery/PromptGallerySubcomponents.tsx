@@ -32,13 +32,15 @@ export const PromptCard = memo(function PromptCard({
   onShowDetail,
   onShowImages,
   imageCache,
-  onImageLoad
+  onImageLoad,
+  onUseTemplate,
 }: { 
   prompt: PromptGalleryItem & { uniqueKey: string };
   onShowDetail: () => void;
   onShowImages: (initialIndex?: number) => void;
   imageCache: Set<string>;
   onImageLoad: (url: string) => void;
+  onUseTemplate?: () => void;
 }) {
   const [imageIndex, setImageIndex] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -168,6 +170,14 @@ export const PromptCard = memo(function PromptCard({
           </a>
         </div>
       )}
+      {prompt.images.length === 0 && (
+        <div className="relative flex aspect-square items-center justify-center bg-muted/60">
+          <div className="text-center text-muted-foreground">
+            <Wand2 className="mx-auto mb-2 h-8 w-8" />
+            <p className="text-xs">模板预览图待补充</p>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="p-3 space-y-2">
@@ -179,6 +189,17 @@ export const PromptCard = memo(function PromptCard({
         >
           {prompt.title}
         </h3>
+
+        <Badge variant={prompt.caseType === 'featured' || prompt.caseType === 'skill' ? 'default' : 'outline'} className="w-fit text-[10px] px-1.5 py-0">
+          {prompt.caseType === 'featured' ? '精选案例' : prompt.caseType === 'skill' ? 'Skills 创作模板案例' : '常规案例'}
+        </Badge>
+
+        {onUseTemplate && (
+          <Button size="sm" className="w-full gap-1" onClick={(event) => { event.stopPropagation(); onUseTemplate(); }}>
+            <Wand2 className="h-3.5 w-3.5" />
+            使用 Skill 模板
+          </Button>
+        )}
 
         {/* Tags */}
         <div className="flex flex-wrap gap-1">
@@ -208,18 +229,6 @@ export const PromptCard = memo(function PromptCard({
             <span className="text-xs text-muted-foreground truncate">
               {prompt.contributor || '未知作者'}
             </span>
-            {prompt.sourceUrl && (
-              <a
-                href={prompt.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-                title="来源"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            )}
           </div>
           <Button
             variant="ghost"
@@ -423,22 +432,6 @@ export function PromptDetailModal({
           {prompt.contributor && (
             <div className="text-sm text-muted-foreground">
               贡献者：{prompt.contributor}
-            </div>
-          )}
-
-          {/* Source */}
-          {prompt.sourceUrl && (
-            <div className="text-sm text-muted-foreground flex items-center gap-1.5">
-              <span>来源：</span>
-              <a
-                href={prompt.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline flex items-center gap-1"
-              >
-                {prompt.source || 'GitHub'}
-                <ExternalLink className="w-3 h-3" />
-              </a>
             </div>
           )}
 

@@ -9,6 +9,7 @@ import {
   type AgentMessage,
   type AgentProposal,
   type AgentActionType,
+  type AgentSkillContext,
 } from '@/lib/agent-chat-config';
 import {
   normalizeGptImageBackground,
@@ -46,6 +47,7 @@ export interface StreamAgentInput {
   history: AgentMessage[];
   catalog: AgentCatalogEntry[];
   modelCatalog: AgentModelCatalogEntry[];
+  skillContext?: AgentSkillContext;
   webSearch?: boolean;
 }
 
@@ -63,8 +65,12 @@ export interface StreamAgentHandle {
   promise: Promise<void>;
 }
 
-function buildInstructions(catalog: AgentCatalogEntry[], modelCatalog: AgentModelCatalogEntry[]): string {
+function buildInstructions(catalog: AgentCatalogEntry[], modelCatalog: AgentModelCatalogEntry[], skillContext?: AgentSkillContext): string {
   let instructions = AGENT_SYSTEM_INSTRUCTIONS;
+
+  if (skillContext) {
+    instructions += `\n\n当前 Skill 创作上下文：\n- Skill：${skillContext.skillName}\n- Skill id：${skillContext.skillId}\n- Skill 版本：${skillContext.skillVersion}\n- 模板：${skillContext.templateName}\n- 模板说明：${skillContext.templateDescription}\n- 推荐比例：${skillContext.recommendedRatio}\n- 必需输入：${skillContext.requiredInput}\n\nSkill 执行规则：\n${skillContext.instructions}`;
+  }
 
   if (modelCatalog.length > 0) {
     const modelLines = modelCatalog
@@ -187,6 +193,7 @@ interface MessagesEventEnvelope {
 }
 
 function normalizeAction(value: unknown): AgentActionType {
+  if (value === 'run_skill') return 'run_skill';
   return value === 'edit' ? 'edit' : 'generate';
 }
 
@@ -195,6 +202,9 @@ function parseProposalArguments(raw: string): AgentProposal | null {
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const action = normalizeAction(parsed.action);
+    const skillId = typeof parsed.skill_id === 'string' && parsed.skill_id.trim().length > 0 ? parsed.skill_id.trim() : undefined;
+    const skillVersion = typeof parsed.skill_version === 'string' && parsed.skill_version.trim().length > 0 ? parsed.skill_version.trim() : undefined;
+    const templateId = typeof parsed.template_id === 'string' && parsed.template_id.trim().length > 0 ? parsed.template_id.trim() : undefined;
     const prompt = typeof parsed.prompt === 'string' ? parsed.prompt : '';
     const reason = typeof parsed.reason === 'string' ? parsed.reason : '';
     const ids = Array.isArray(parsed.referenced_image_ids)
@@ -226,6 +236,9 @@ function parseProposalArguments(raw: string): AgentProposal | null {
 
     return {
       action,
+      skillId,
+      skillVersion,
+      templateId,
       prompt,
       reason,
       referencedImageIds: ids,
@@ -302,7 +315,7 @@ async function runAgentStream(
   callbacks: StreamAgentCallbacks,
   signal: AbortSignal,
 ): Promise<void> {
-  const instructions = buildInstructions(input.catalog, input.modelCatalog);
+  const instructions = buildInstructions(input.catalog, input.modelCatalog, input.skillContext);
   const body = buildAgentRequestBody(input.protocol, input.model || AGENT_TEXT_MODEL_FALLBACK, input.history, instructions, Boolean(input.webSearch));
 
   const response = await fetch('/api/nova/proxy/text', {
@@ -797,8 +810,15 @@ async function readHttpError(response: Response): Promise<Error> {
   if (detail) {
     try {
       const parsed = JSON.parse(detail);
+      const code = typeof parsed?.code === 'string' ? parsed.code : '';
       const message = parsed?.error?.message || parsed?.error || parsed?.message;
       if (typeof message === 'string' && message.length > 0) {
+        if (code === 'API_KEY_EXPIRED') {
+          return new Error('服务 API Key 已过期，请联系管理员更新后端配置。');
+        }
+        if (code === 'UPSTREAM_NOT_ALLOWED') {
+          return new Error('服务上游地址未被允许，请联系管理员检查后端配置。');
+        }
         return new Error(`${response.status} ${response.statusText}: ${message}`);
       }
     } catch {

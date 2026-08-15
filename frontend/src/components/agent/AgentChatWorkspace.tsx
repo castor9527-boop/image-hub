@@ -68,6 +68,7 @@ import { requireDefaultConfiguredTextModel } from '@/lib/model-endpoints';
 import { AgentImageGallery } from '@/components/agent/AgentImageGallery';
 import { AgentGenerationProgress } from '@/components/agent/AgentGenerationResult';
 import { CustomSizeDialog } from '@/components/CustomSizeDialog';
+import type { AgentSkillContext } from '@/lib/agent-chat-config';
 
 import { MAX_UPLOAD_SIZE_BYTES } from '@/lib/constants';
 import { loadJsonFromStorage, saveJsonToStorage } from '@/lib/settings-storage';
@@ -91,6 +92,7 @@ interface AgentChatWorkspaceProps {
   wideMode?: boolean;
   disabled?: boolean;
   onConfigureApiKey?: () => void;
+  skillContext?: AgentSkillContext;
 }
 
 function phaseLabel(phase: AgentPhase): string | null {
@@ -103,8 +105,8 @@ function phaseLabel(phase: AgentPhase): string | null {
   }
 }
 
-export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfigureApiKey }: AgentChatWorkspaceProps) {
-  const agent = useAgentChat();
+export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfigureApiKey, skillContext }: AgentChatWorkspaceProps) {
+  const agent = useAgentChat(skillContext);
   const [uploads, setUploads] = useState<PendingUpload[]>([]);
   const [uploading, setUploading] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
@@ -274,10 +276,6 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
   }, [agent, onCooldown, showToast]);
 
   const handleImportAssets = useCallback(async (selectedAssets: ImageAsset[]) => {
-    if (!agent.hasApiKey) {
-      setMissingApiKeyDialogOpen(true);
-      return;
-    }
     if (selectedAssets.length === 0) return;
     setUploading(true);
     try {
@@ -328,62 +326,77 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
 
   const handleFiles = useCallback(async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
-    if (!agent.hasApiKey) {
-      setMissingApiKeyDialogOpen(true);
-      return;
-    }
+    let addedCount = 0;
     setUploading(true);
     try {
       for (const file of Array.from(fileList)) {
-        if (!file.type.startsWith('image/')) continue;
-        if (file.size > MAX_UPLOAD_SIZE_BYTES) continue;
-        const prepared = await prepareUploadImage(file);
-        const uploadId = prepared.id || generateUUID();
-        setUploads(prev => prev.some(u => u.id === uploadId)
-          ? prev
-          : [...prev, {
-              id: uploadId,
-              name: prepared.name,
-              preview: prepared.preview,
-              dataUrl: prepared.dataUrl,
-              mimeType: prepared.mimeType,
-              badge: getOptimizationBadge(prepared.originalSize, prepared.processedSize, prepared.cacheHit),
-            }]);
+        if (!file.type.startsWith('image/')) {
+          showToast(`${file.name} 不是支持的图片格式`, 'error');
+          continue;
+        }
+        if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+          showToast(`${file.name} 超过 10MB，无法上传`, 'error');
+          continue;
+        }
+        try {
+          const prepared = await prepareUploadImage(file);
+          const uploadId = prepared.id || generateUUID();
+          setUploads(prev => prev.some(u => u.id === uploadId)
+            ? prev
+            : [...prev, {
+                id: uploadId,
+                name: prepared.name,
+                preview: prepared.preview,
+                dataUrl: prepared.dataUrl,
+                mimeType: prepared.mimeType,
+                badge: getOptimizationBadge(prepared.originalSize, prepared.processedSize, prepared.cacheHit),
+              }]);
+          addedCount += 1;
+        } catch (error) {
+          showToast(error instanceof Error ? `${file.name}：${error.message}` : `${file.name} 上传失败`, 'error');
+        }
       }
     } finally {
       setUploading(false);
     }
-  }, [agent.hasApiKey]);
+    if (addedCount > 0) showToast(`已添加 ${addedCount} 张参考图，请确认缩略图后发送`, 'success');
+  }, [showToast]);
 
   /** 接受 File[]（来自粘贴事件），复用 handleFiles 的逻辑 */
   const handleFileArray = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
-    if (!agent.hasApiKey) {
-      setMissingApiKeyDialogOpen(true);
-      return;
-    }
+    let addedCount = 0;
     setUploading(true);
     try {
       for (const file of files) {
         if (!file.type.startsWith('image/')) continue;
-        if (file.size > MAX_UPLOAD_SIZE_BYTES) continue;
-        const prepared = await prepareUploadImage(file);
-        const uploadId = prepared.id || generateUUID();
-        setUploads(prev => prev.some(u => u.id === uploadId)
-          ? prev
-          : [...prev, {
-              id: uploadId,
-              name: prepared.name,
-              preview: prepared.preview,
-              dataUrl: prepared.dataUrl,
-              mimeType: prepared.mimeType,
-              badge: getOptimizationBadge(prepared.originalSize, prepared.processedSize, prepared.cacheHit),
-            }]);
+        if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+          showToast(`${file.name} 超过 10MB，无法上传`, 'error');
+          continue;
+        }
+        try {
+          const prepared = await prepareUploadImage(file);
+          const uploadId = prepared.id || generateUUID();
+          setUploads(prev => prev.some(u => u.id === uploadId)
+            ? prev
+            : [...prev, {
+                id: uploadId,
+                name: prepared.name,
+                preview: prepared.preview,
+                dataUrl: prepared.dataUrl,
+                mimeType: prepared.mimeType,
+                badge: getOptimizationBadge(prepared.originalSize, prepared.processedSize, prepared.cacheHit),
+              }]);
+          addedCount += 1;
+        } catch (error) {
+          showToast(error instanceof Error ? `${file.name}：${error.message}` : `${file.name} 上传失败`, 'error');
+        }
       }
     } finally {
       setUploading(false);
     }
-  }, [agent.hasApiKey]);
+    if (addedCount > 0) showToast(`已添加 ${addedCount} 张参考图，请确认缩略图后发送`, 'success');
+  }, [showToast]);
 
   // Ctrl+V 粘贴图片
   useEffect(() => {
@@ -600,6 +613,16 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
         </div>
       </div>
 
+      {skillContext && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-primary/5 px-4 py-2 text-xs">
+          <span className="font-medium text-primary">Skill 创作</span>
+          <span className="text-foreground">{skillContext.skillName}</span>
+          <span className="text-muted-foreground">·</span>
+          <span className="text-muted-foreground">{skillContext.templateName}</span>
+          <span className="ml-auto text-muted-foreground">推荐比例 {skillContext.recommendedRatio}</span>
+        </div>
+      )}
+
       <div
         ref={scrollRef}
         className="flex-1 space-y-4 overflow-y-auto px-4 py-4"
@@ -668,6 +691,7 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
             images={agent.images}
             imageModel={intentRecognition ? agent.imageModel : userModel}
             hideControls={!intentRecognition}
+            autoSelectReferences={Boolean(skillContext && agent.images.length > 0)}
             onModelChange={agent.setImageModel}
             onApprove={(prompt, ids, _model, _params) => {
               if (intentRecognition) {
@@ -763,6 +787,10 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
       <div className="border-t border-border p-3 pt-2">
         {uploads.length > 0 && (
           <div className="mb-2">
+            <div className="mb-1 flex items-center gap-1.5 text-xs text-primary">
+              <ImagePlus className="h-3.5 w-3.5" />
+              <span>待发送参考图 · {uploads.length} 张，发送后将引用</span>
+            </div>
             <AttachmentChips
               files={uploads}
               onRemove={id => setUploads(prev => prev.filter(u => u.id !== id))}

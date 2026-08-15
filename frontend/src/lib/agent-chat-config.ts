@@ -58,10 +58,25 @@ export interface AgentImageRecord {
 
 // ===== 意图抽取：函数调用结果 =====
 
-export type AgentActionType = 'generate' | 'edit';
+export type AgentActionType = 'generate' | 'edit' | 'run_skill';
+
+export interface AgentSkillContext {
+  skillId: string;
+  skillVersion: string;
+  skillName: string;
+  templateId: string;
+  templateName: string;
+  templateDescription: string;
+  recommendedRatio: string;
+  requiredInput: string;
+  instructions: string;
+}
 
 export interface AgentProposal {
   action: AgentActionType;
+  skillId?: string;
+  skillVersion?: string;
+  templateId?: string;
   prompt: string;
   referencedImageIds: string[];
   reason: string;
@@ -91,6 +106,9 @@ export interface AgentProposal {
  */
 export interface AgentProposalData {
   action: AgentActionType;
+  skillId?: string;
+  skillVersion?: string;
+  templateId?: string;
   prompt: string;
   referencedImageIds: string[];
   model: string;
@@ -111,6 +129,7 @@ export const AGENT_SYSTEM_INSTRUCTIONS = `你是一个图像生成与编辑助�
 你的能力：
 - 与用户连续对话，帮助澄清他们想要的画面。
 - 当你判断用户想要「生成一张新图」或「修改已有图片」时，调用 propose_image_action 工具，把建议的提示词和参考图交给用户确认，而不是把提示词直接写进聊天回复里。
+- 当当前上下文提供了 Skill 和模板时，优先使用 run_skill 动作，并遵循该 Skill 的创作规则；不要把 Skill 原文直接展示给用户。
 
 关于图片目录：
 - 每轮对话我都会在指令里附上一份「当前可用图片目录」，列出每张图片的 id（如 img_1）和文字描述。
@@ -158,8 +177,20 @@ export const PROPOSE_IMAGE_ACTION_TOOL = {
     properties: {
       action: {
         type: 'string',
-        enum: ['generate', 'edit'],
-        description: 'generate=从零生成新图；edit=在已有图片基础上修改',
+        enum: ['generate', 'edit', 'run_skill'],
+        description: 'generate=从零生成新图；edit=在已有图片基础上修改；run_skill=按当前 Skill 模板执行创作工作流',
+      },
+      skill_id: {
+        type: ['string', 'null'],
+        description: '当前 Skill id；run_skill 时填写，否则为 null',
+      },
+      skill_version: {
+        type: ['string', 'null'],
+        description: '当前 Skill 版本；run_skill 时填写，否则为 null',
+      },
+      template_id: {
+        type: ['string', 'null'],
+        description: '当前 Skill 模板 id；run_skill 时填写，否则为 null',
       },
       prompt: {
         type: 'string',
@@ -217,6 +248,9 @@ export const PROPOSE_IMAGE_ACTION_TOOL = {
     },
     required: [
       'action',
+      'skill_id',
+      'skill_version',
+      'template_id',
       'prompt',
       'referenced_image_ids',
       'reason',

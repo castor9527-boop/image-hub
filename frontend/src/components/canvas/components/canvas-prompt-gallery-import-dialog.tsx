@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Check, ExternalLink, Image as ImageIcon, LibraryBig, Loader2, Search, X } from "lucide-react";
+import { AlertCircle, Check, Image as ImageIcon, LibraryBig, Loader2, Search, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ALL_CATEGORY, DEFAULT_CATEGORIES, PROMPT_DATA_SOURCES, fetchAllPromptSources, getPromptSourceLabel, type PromptWithKey } from "@/lib/prompt-gallery-data";
+import { ALL_CATEGORY, DEFAULT_CATEGORIES, fetchAllPromptSources, type PromptWithKey } from "@/lib/prompt-gallery-data";
 import { cn } from "@/lib/utils";
 
 type CanvasPromptGalleryImportDialogProps = {
@@ -258,29 +257,6 @@ export function CanvasPromptGalleryImportDialog({ open, importing, onOpenChange,
           <span className="min-w-0 truncate text-muted-foreground">
             {selectedPrompt ? `将导入：${selectedPrompt.title}` : `找到 ${filteredPrompts.length} 个提示词模板`}
           </span>
-          <Popover>
-            <PopoverTrigger className="inline-flex shrink-0 items-center gap-1 text-muted-foreground transition-colors hover:text-foreground">
-              <span>提示词来源</span>
-              <ExternalLink className="h-3 w-3" />
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-72 p-2">
-              <p className="px-2 pb-1.5 text-xs font-medium text-muted-foreground">提示词来源（{PROMPT_DATA_SOURCES.length}）</p>
-              <div className="space-y-0.5">
-                {PROMPT_DATA_SOURCES.map((source) => (
-                  <a
-                    key={source.name}
-                    href={source.sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
-                  >
-                    <span className="truncate">{getPromptSourceLabel(source.sourceUrl)}</span>
-                    <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />
-                  </a>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
         </div>
       </DialogContent>
     </Dialog>

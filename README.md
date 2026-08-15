@@ -93,6 +93,16 @@ GGOO 中转服务 / 账户积分服务
 
 ## 本地运行
 
+### 统一服务配置
+
+Image Hub 不要求浏览器配置 API Key。后端通过 `GGOO_CONFIG_FILE` 读取服务端环境配置，前端只调用 Image Hub 的接口：
+
+```env
+GGOO_CONFIG_FILE=/path/to/ggoo-backend/.env
+```
+
+该文件应包含 `GGOO_SERVICE_API_KEY`、`GGOO_GATEWAY_BASE_URL`、`GGOO_MODEL` 和 `GGOO_IMAGE_MODEL`。Key 只存在服务端，不提交到仓库，也不会下发给浏览器。正式部署时将该配置替换为 GGOO 中转服务和积分账户对应的服务端配置。
+
 环境要求：
 
 - Node.js 20 或更高版本
@@ -142,6 +152,8 @@ NEXT_PUBLIC_GGOO_SHOW_DEVELOPER_SETTINGS=false
 ```
 
 后端运行参数示例位于 `backend/.env.example`。其中的 API、队列和存储参数仅用于本地开发或服务端部署，不应直接暴露到用户界面。
+
+提示词审核后台地址为 `/admin/prompt-library`。暂时使用独立管理员密码保护，在 `backend/.env` 中配置 `GGOO_ADMIN_PASSWORD`；该后台不接入 GGOO 主站账户体系。
 
 本地数据库、生成图片、素材文件、`node_modules`、构建产物和 `.env.local` 已加入 `.gitignore`，不会进入 GitHub 仓库。
 

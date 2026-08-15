@@ -46,6 +46,8 @@ import {
 import { cn } from '@/lib/utils';
 import { BA_RANDOM_URL, BING_WALLPAPER_URL } from '@/lib/constants';
 import type { SceneAspectRatio, ScenePromptMetadata } from '@/lib/scene-prompts';
+import { fetchSkillRuntime, type SkillDefinition, type SkillTemplate } from '@/lib/skill-library';
+import type { AgentSkillContext } from '@/lib/agent-chat-config';
 
 const SHOW_DEVELOPER_SETTINGS = process.env.NEXT_PUBLIC_GGOO_SHOW_DEVELOPER_SETTINGS === 'true';
 const GGOO_MAIN_SITE_URL = process.env.NEXT_PUBLIC_GGOO_MAIN_SITE_URL?.trim() || 'https://ggoo.ai/chat';
@@ -64,6 +66,7 @@ export function WorkspaceShell() {
   const [generationHistoryFilter, setGenerationHistoryFilter] = useState<GenerationHistoryFilter>('all');
   const [generationClearScope, setGenerationClearScope] = useState<HistoryClearScope | null>(null);
   const [referenceDraft, setReferenceDraft] = useState<{ id: number; refImages: RefImageData[]; prompt?: string } | null>(null);
+  const [skillContext, setSkillContext] = useState<AgentSkillContext | undefined>();
   const workspace = useWorkspaceJobs();
   const galleryConfig = usePromptGalleryConfig();
   const promptGallery = usePromptGalleryAccess(galleryConfig.mode, galleryConfig.passwordEnabled, setError, () => setActiveTab('prompt-gallery'));
@@ -84,6 +87,16 @@ export function WorkspaceShell() {
 
   const handleLogoClick = useCallback(() => {
     if (GGOO_MAIN_SITE_URL) window.location.assign(GGOO_MAIN_SITE_URL);
+  }, []);
+
+  const handleUseSkillTemplate = useCallback(async (skill: SkillDefinition, template: SkillTemplate) => {
+    try {
+      const runtime = await fetchSkillRuntime(skill.id, template.id);
+      setSkillContext(runtime);
+      setActiveTab('agent');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Skill 模板加载失败');
+    }
   }, []);
 
   useEffect(() => subscribeImageActionToasts(detail => showToast(detail.message, detail.type)), [showToast]);
@@ -424,8 +437,8 @@ export function WorkspaceShell() {
               >
                 <AgentChatWorkspace
                   wideMode={wideMode}
-                  disabled={!workspace.hasApiKey}
                   onConfigureApiKey={() => setSettingsOpen(true)}
+                  skillContext={skillContext}
                 />
               </TabsContent>
 
@@ -464,7 +477,7 @@ export function WorkspaceShell() {
               {promptGallery.showPromptGallery && (
                 <TabsContent value="prompt-gallery" keepMounted>
                   <div className={cn('bg-transparent p-0 shadow-none sm:rounded-2xl sm:bg-card sm:p-4 sm:shadow-sm sm:border sm:border-border', wideMode && 'sm:p-5')}>
-                    <PromptGallery wideMode={wideMode} />
+                    <PromptGallery wideMode={wideMode} onUseSkillTemplate={handleUseSkillTemplate} />
                   </div>
                 </TabsContent>
               )}
@@ -485,6 +498,7 @@ export function WorkspaceShell() {
         open={missingApiKeyDialogOpen}
         onOpenChange={setMissingApiKeyDialogOpen}
         onConfigure={() => setSettingsOpen(true)}
+        canConfigure={SHOW_DEVELOPER_SETTINGS}
       />
 
       <PromptGalleryAccessDialog
