@@ -38,7 +38,7 @@
           "description": "保留语义和情绪来源，不保留原照片画面，重新构成艺术作品。",
           "recommendedRatio": "3:5",
           "requiredInput": "1 张原始照片",
-          "previewImages": []
+          "previewImages": ["/api/ggoo/skills/assets/scene-distillation-zine.png"]
         }
       ]
     },
@@ -99,7 +99,7 @@
         "description": "真实照片与低饱和水墨抽象上下对应，适合风景、建筑和安静纪实照片。",
         "recommendedRatio": "3:5",
         "requiredInput": "1 张风景、建筑或旅行照片",
-        "previewImages": []
+        "previewImages": ["/api/ggoo/skills/assets/eastern-ink-photo-diptych.png"]
       }]
     },
     {
@@ -115,6 +115,63 @@
         "recommendedRatio": "4:5",
         "requiredInput": "1 张原始照片",
         "previewImages": []
+      }]
+    },
+    {
+      "id": "travel-memory-card-duo",
+      "name": "旅行记忆卡双联",
+      "description": "从一张旅行照片生成横向旅行记忆卡片，以及包含相同六个主题元素的透明背景贴纸 PNG。",
+      "version": "1.0",
+      "input": {
+        "minReferenceImages": 1,
+        "maxReferenceImages": 1,
+        "recommendedRatios": ["3:2"]
+      },
+      "templates": [{
+        "id": "travel-memory-card-duo-default",
+        "name": "旅行记忆卡与贴纸套组",
+        "description": "先生成完整旅行记忆卡，再生成与其保持六个相同图案的透明贴纸 PNG。",
+        "recommendedRatio": "3:2",
+        "requiredInput": "1 张旅行、街景、风景、生活方式、人像或宠物照片",
+        "previewImages": ["/api/ggoo/skills/assets/travel-memory-card-duo.png"]
+      }]
+    },
+    {
+      "id": "surreal-pop-collage",
+      "name": "超现实波普拼贴",
+      "description": "将照片去色为现实锚点，用巨大平涂色形重构背景，并加入唯一一个源于场景的不可能巨物。",
+      "version": "1.0",
+      "input": {
+        "minReferenceImages": 1,
+        "maxReferenceImages": 1,
+        "recommendedRatios": ["4:5", "3:4", "1:1"]
+      },
+      "templates": [{
+        "id": "surreal-pop-collage-default",
+        "name": "超现实波普拼贴海报",
+        "description": "黑白现实锚点、平涂梦境背景和一个不可能的巨物组成的超现实拼贴。",
+        "recommendedRatio": "4:5",
+        "requiredInput": "1 张人物、风景、城市或生活照片",
+        "previewImages": ["/api/ggoo/skills/assets/surreal-pop-collage.png"]
+      }]
+    },
+    {
+      "id": "gc-minimal-zine-poster",
+      "name": "GC 极简 Zine 海报",
+      "description": "以大留白、纸张质感、小型编辑拼贴、实验字体和单一高彩色点构建诗意极简海报。",
+      "version": "0.3.1",
+      "input": {
+        "minReferenceImages": 0,
+        "maxReferenceImages": 5,
+        "recommendedRatios": ["3:5", "5:3"]
+      },
+      "templates": [{
+        "id": "gc-minimal-zine-poster-default",
+        "name": "GC 极简 Zine 海报",
+        "description": "用一个清晰的视觉事件、纸面材质和克制排版生成稀疏的编辑海报。",
+        "recommendedRatio": "3:5",
+        "requiredInput": "主题、句子、照片、参考图或内容 brief 均可",
+        "previewImages": ["/api/ggoo/skills/assets/gc-minimal-zine-poster.png"]
       }]
     },
     {
@@ -160,6 +217,51 @@
         "recommendedRatio": "2:3",
         "requiredInput": "1 张原始照片",
         "previewImages": ["/api/ggoo/skills/assets/photo-to-zine-postcard.png"]
+      }]
+    },
+    {
+      "id": "photo-relic-editorial",
+      "name": "Photo Relic Editorial",
+      "description": "保留真实照片作为主体，在下方生成来源于照片的记忆遗迹纸面，以现代版画语言形成安静、克制的编辑海报。",
+      "version": "1.0",
+      "input": {"minReferenceImages": 1, "maxReferenceImages": 1, "recommendedRatios": ["3:5", "9:16"]},
+      "templates": [{
+        "id": "photo-relic-editorial-default",
+        "name": "Photo Relic 记忆遗迹海报",
+        "description": "真实摄影与照片衍生纸面遗迹上下组合，适合建筑、城市、风景和具有情绪留白的照片。",
+        "recommendedRatio": "3:5",
+        "requiredInput": "1 张原始照片",
+        "previewImages": ["/api/ggoo/skills/assets/photo-relic-editorial.png"]
+      }]
+    },
+    {
+      "id": "retro-scrapbook-collage",
+      "name": "复古照片剪贴簿海报",
+      "description": "将日常照片转译成复古 DIY 剪贴簿海报，保留居中的完整人物，并从原图提取完整物件贴纸和少量通用拼贴元素。",
+      "version": "1.0",
+      "input": {"minReferenceImages": 1, "maxReferenceImages": 1, "recommendedRatios": ["3:4"]},
+      "templates": [{
+        "id": "retro-scrapbook-collage-default",
+        "name": "复古照片剪贴簿海报",
+        "description": "完整人物、来源物件贴纸和暖白扫描纸组成的复古照片剪贴簿海报。",
+        "recommendedRatio": "3:4",
+        "requiredInput": "1 张人物或日常照片",
+        "previewImages": ["/api/ggoo/skills/assets/retro-scrapbook-collage.png"]
+      }]
+    },
+    {
+      "id": "make-photo-stamp-archive",
+      "name": "照片印章档案海报",
+      "description": "保留真实照片，并与暖白纸张直接拼接，在纸面上加入根据照片主体提炼的手工印章和克制的档案文字。",
+      "version": "1.0",
+      "input": {"minReferenceImages": 1, "maxReferenceImages": 10, "recommendedRatios": ["3:2", "2:3"]},
+      "templates": [{
+        "id": "make-photo-stamp-archive-default",
+        "name": "照片印章档案海报",
+        "description": "真实照片与暖白纸面直接拼接，以主体衍生的手工印章记录场景记忆。",
+        "recommendedRatio": "3:2",
+        "requiredInput": "1 张或多张原始照片",
+        "previewImages": ["/api/ggoo/skills/assets/make-photo-stamp-archive.png"]
       }]
     }
   ]

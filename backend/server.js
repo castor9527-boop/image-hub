@@ -106,7 +106,7 @@ function getServerManagedProvider() {
     imageProtocol: 'openai',
     textProtocol: String(env.GGOO_TEXT_PROTOCOL || 'openai-chat-completions').trim() || 'openai-chat-completions',
     imageModel: String(env.GGOO_IMAGE_MODEL || 'gpt-image-2').trim() || 'gpt-image-2',
-    textModel: String(env.GGOO_MODEL || 'gpt-5.6-luna').trim() || 'gpt-5.6-luna',
+    textModel: String(env.GGOO_MODEL || 'gpt-5.6-terra').trim() || 'gpt-5.6-terra',
   };
 }
 

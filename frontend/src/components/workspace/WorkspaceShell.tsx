@@ -437,6 +437,7 @@ export function WorkspaceShell() {
               >
                 <AgentChatWorkspace
                   wideMode={wideMode}
+                  active={activeTab === 'agent'}
                   onConfigureApiKey={() => setSettingsOpen(true)}
                   skillContext={skillContext}
                 />

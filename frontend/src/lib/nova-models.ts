@@ -326,7 +326,7 @@ function getInitialRegistry(): NovaModelRegistry {
     imageModels: [{
       id: SERVER_MANAGED_IMAGE_MODEL_ID,
       protocol: 'openai',
-      name: 'GGOO 图片模型',
+      name: 'image2',
       modelId: 'gpt-image-2',
       apiKey: SERVER_MANAGED_PROVIDER_KEY,
       baseUrl: '/api/nova',
@@ -338,11 +338,11 @@ function getInitialRegistry(): NovaModelRegistry {
     textModels: [{
       id: SERVER_MANAGED_TEXT_MODEL_ID,
       protocol: 'openai-chat-completions',
-      name: 'GGOO 文本模型',
-      modelId: 'gpt-5.6-luna',
+      name: 'GPT 5.6 Terra',
+      modelId: 'gpt-5.6-terra',
       apiKey: SERVER_MANAGED_PROVIDER_KEY,
       baseUrl: '/api/nova',
-      note: '由 GGOO 后端统一提供',
+      note: '由后端统一提供',
     }],
     defaults: {
       textToImage: SERVER_MANAGED_IMAGE_MODEL_ID,

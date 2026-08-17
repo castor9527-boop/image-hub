@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, ImagePlus, Layers, Maximize, Pencil, RectangleHorizontal, Sparkles, Thermometer, Wand2, X } from 'lucide-react';
+import { Check, Layers, Maximize, Pencil, RectangleHorizontal, Sparkles, Thermometer, Wand2, X } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
@@ -13,22 +13,16 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import {
-  MODEL_OPTIONS,
-  type ModelId,
-} from '@/lib/gemini-config';
+import type { ModelId } from '@/lib/gemini-config';
 import type { AspectRatio, OutputSize } from '@/lib/job-store';
 import {
-  findReferenceCapableModel,
   getAspectRatioOptions,
   getCustomSizeMaxSide,
   getModelMaxRefImages,
   getOutputSizeLabel,
   getSizeOptions,
   getSupportsTemperature,
-  getValidOutputSizes,
   getGptImageAdvancedParamsForModel,
-  normalizeCustomImageSize,
   resolveAgentLayout,
   supportsGptImageAdvancedParams,
   supportsAutoLayout,
@@ -59,7 +53,6 @@ interface AgentProposalCardProps {
   busy?: boolean;
   hideControls?: boolean;
   autoSelectReferences?: boolean;
-  onModelChange: (model: ModelId) => void;
   onApprove: (prompt: string, selectedImageIds: string[], model: ModelId, params: AgentApproveParams) => void;
   onCancel: () => void;
 }
@@ -73,7 +66,6 @@ export function AgentProposalCard({
   busy = false,
   hideControls = false,
   autoSelectReferences = false,
-  onModelChange,
   onApprove,
   onCancel,
 }: AgentProposalCardProps) {
@@ -86,7 +78,6 @@ export function AgentProposalCard({
     }
     return images.slice(-maxRefs).map(img => img.imgId);
   });
-  const [modelPopoverOpen, setModelPopoverOpen] = useState(false);
   const [sizePopoverOpen, setSizePopoverOpen] = useState(false);
   const [aspectPopoverOpen, setAspectPopoverOpen] = useState(false);
   const [tempPopoverOpen, setTempPopoverOpen] = useState(false);
@@ -154,8 +145,6 @@ export function AgentProposalCard({
     });
   }, [firstRefDims, initializedWithRef, imageModel, proposal]);
 
-  const modelLabel = MODEL_OPTIONS.find(o => o.value === imageModel)?.label || imageModel;
-
   const effectiveMode = selectedIds.length > 0 ? 'edit' : 'generate';
   const overLimit = selectedIds.length > maxRefs;
 
@@ -184,55 +173,10 @@ export function AgentProposalCard({
     background: layout.gptImageBackground,
   };
 
-  const handleModelChange = (next: ModelId) => {
-    onModelChange(next);
-    // 重新合法化当前布局：档位 snap、比例 snap、自定义尺寸按支持情况保留/清除
-    setLayout((prev) => {
-      const validSizes = getValidOutputSizes(next);
-      const nextSize: OutputSize = validSizes.includes(prev.outputSize) ? prev.outputSize : validSizes[0];
-      const advanced = getGptImageAdvancedParamsForModel(next, {
-        quality: prev.gptImageQuality,
-        style: prev.gptImageStyle,
-        background: prev.gptImageBackground,
-      });
-      if (nextSize === 'auto') {
-        return {
-          outputSize: 'auto',
-          aspectRatio: 'auto',
-          temperature: getSupportsTemperature(next) ? prev.temperature : 1,
-          gptImageQuality: advanced.quality,
-          gptImageStyle: advanced.style,
-          gptImageBackground: advanced.background,
-          parallelCount: prev.parallelCount,
-        };
-      }
-      const validRatios = getAspectRatioOptions(next, nextSize).map((o) => o.value);
-      const nextRatio: AspectRatio = validRatios.includes(prev.aspectRatio) ? prev.aspectRatio : (validRatios[0] || '1:1');
-      const nextCustom = supportsCustomSize(next)
-        ? normalizeCustomImageSize(prev.customSize, getCustomSizeMaxSide(next))
-        : undefined;
-      return {
-        outputSize: nextSize,
-        customSize: nextCustom,
-        aspectRatio: nextRatio,
-        temperature: getSupportsTemperature(next) ? prev.temperature : 1,
-        gptImageQuality: advanced.quality,
-        gptImageStyle: advanced.style,
-        gptImageBackground: advanced.background,
-        parallelCount: prev.parallelCount,
-      };
-    });
-  };
-
   const toggleImage = (imgId: string) => {
     setSelectedIds((prev) => {
       if (prev.includes(imgId)) return prev.filter((id) => id !== imgId);
       if (maxRefs <= 0) {
-        const switched = findReferenceCapableModel(imageModel);
-        if (switched && switched !== imageModel) {
-          handleModelChange(switched);
-          return [imgId];
-        }
         return prev;
       }
       if (prev.length >= maxRefs) return prev;
@@ -366,41 +310,18 @@ export function AgentProposalCard({
           )}
           {overLimit && maxRefs > 0 && (
             <p className="mt-1 text-xs text-destructive">
-              当前模型最多 {maxRefs} 张参考图，且没有可自动切换的兼容模型，请取消部分选择。
+              image2 最多支持 {maxRefs} 张参考图，请取消部分选择。
             </p>
           )}
         </div>
       )}
 
       {!hideControls && (
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        <Popover open={modelPopoverOpen} onOpenChange={setModelPopoverOpen}>
-          <PopoverTrigger
-            disabled={busy}
-            className={cn(buttonVariants({ variant: 'outline', size: 'xs' }), 'gap-1')}
-          >
-            <ImagePlus className="h-3 w-3" />
-            <span className="shrink-0 truncate text-[11px]">{modelLabel}</span>
-          </PopoverTrigger>
-          <PopoverContent className="w-48 p-1" align="start">
-            {MODEL_OPTIONS.map(option => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => {
-                  handleModelChange(option.value);
-                  setModelPopoverOpen(false);
-                }}
-                className={cn(
-                  'w-full text-left px-2.5 py-1.5 rounded-md text-sm hover:bg-muted',
-                  imageModel === option.value && 'bg-muted font-medium'
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <span className={cn(buttonVariants({ variant: 'outline', size: 'xs' }), 'cursor-default gap-1')}>
+            <Sparkles className="h-3 w-3" />
+            <span className="shrink-0 text-[11px]">image2</span>
+          </span>
 
         {autoLayoutAvailable && (
           <button

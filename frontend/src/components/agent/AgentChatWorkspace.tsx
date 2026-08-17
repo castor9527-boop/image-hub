@@ -90,6 +90,7 @@ interface AgentParamsSettings {
 
 interface AgentChatWorkspaceProps {
   wideMode?: boolean;
+  active?: boolean;
   disabled?: boolean;
   onConfigureApiKey?: () => void;
   skillContext?: AgentSkillContext;
@@ -105,7 +106,7 @@ function phaseLabel(phase: AgentPhase): string | null {
   }
 }
 
-export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfigureApiKey, skillContext }: AgentChatWorkspaceProps) {
+export function AgentChatWorkspace({ wideMode = false, active = true, disabled = false, onConfigureApiKey, skillContext }: AgentChatWorkspaceProps) {
   const agent = useAgentChat(skillContext);
   const [uploads, setUploads] = useState<PendingUpload[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -231,6 +232,22 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [agent.messages, agent.streamingText, agent.proposal, agent.phase, agent.generationDraft]);
+
+  useEffect(() => {
+    if (!active) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const scrollToLatest = () => {
+      if (el.clientHeight > 0) el.scrollTop = el.scrollHeight;
+    };
+    const observer = new ResizeObserver(scrollToLatest);
+    observer.observe(el);
+    const frame = window.requestAnimationFrame(scrollToLatest);
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [active]);
 
   const busy = agent.phase !== 'idle';
   const canSend = !busy && !uploading && (hasEditorContent || uploads.length > 0);
@@ -692,7 +709,6 @@ export function AgentChatWorkspace({ wideMode = false, disabled = false, onConfi
             imageModel={intentRecognition ? agent.imageModel : userModel}
             hideControls={!intentRecognition}
             autoSelectReferences={Boolean(skillContext && agent.images.length > 0)}
-            onModelChange={agent.setImageModel}
             onApprove={(prompt, ids, _model, _params) => {
               if (intentRecognition) {
                 void agent.approveProposal(prompt, ids, _model, _params);

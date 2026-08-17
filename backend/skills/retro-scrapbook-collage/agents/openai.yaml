@@ -1,0 +1,4 @@
+interface:
+  display_name: "复古照片拼贴"
+  short_description: "把日常照片做成居中完整主体的复古手工剪贴簿风格海报"
+  default_prompt: "使用 $retro-scrapbook-collage，把这张照片转成 1086×1448 的复古手工剪贴海报：人物居中完整保留，提取少量完整物件贴纸，再加入克制的通用拼贴元素和语义文字。"

@@ -7,19 +7,21 @@ import { createNovaTask, getNovaTask, resolveImageTaskProvider, type ImageRefere
 import { fetchImageAsBlob } from '@/lib/image-downloader';
 import {
   getGptImageAdvancedParamsForModel,
-  resolveAgentModel,
   type AgentModelCatalogEntry,
   type AgentResolvedLayout,
 } from '@/lib/model-capabilities';
 import type { ModelId } from '@/lib/gemini-config';
-import { getCompleteImageModels, loadRegistry } from '@/lib/nova-models';
+import {
+  getCompleteImageModels,
+  loadRegistry,
+  SERVER_MANAGED_IMAGE_MODEL_ID,
+} from '@/lib/nova-models';
 import {
   streamAgentChat,
   describeImage,
   type StreamAgentHandle,
 } from '@/lib/agent-chat-client';
 import {
-  AGENT_DEFAULT_IMAGE_MODEL_FALLBACK,
   type AgentMessage,
   type AgentImageRecord,
   type AgentProposal,
@@ -72,13 +74,15 @@ export interface PendingUpload {
 
 const PREVIEW_MAX_SIDE = 512;
 
-/** 构建当前可用的图像模型目录，供 Agent 选择模型 */
+/** 仅向 Agent 声明后端托管的图像模型。 */
 function buildModelCatalog(): AgentModelCatalogEntry[] {
-  return getCompleteImageModels(loadRegistry()).map(m => ({
-    id: m.id,
-    name: m.name,
-    maxOutputSize: m.maxOutputSize,
-  }));
+  return getCompleteImageModels(loadRegistry())
+    .filter(m => m.id === SERVER_MANAGED_IMAGE_MODEL_ID)
+    .map(m => ({
+      id: m.id,
+      name: m.name,
+      maxOutputSize: m.maxOutputSize,
+    }));
 }
 
 function base64ToBlob(base64: string, mimeType: string): Blob {
@@ -185,7 +189,7 @@ export function useAgentChat(skillContext?: AgentSkillContext) {
   const [proposal, setProposal] = useState<AgentProposal | null>(null);
   const [streamingText, setStreamingText] = useState('');
   const [streamingReasoning, setStreamingReasoning] = useState('');
-  const [imageModel, setImageModelState] = useState<ModelId>(AGENT_DEFAULT_IMAGE_MODEL_FALLBACK);
+  const [imageModel, setImageModelState] = useState<ModelId>(SERVER_MANAGED_IMAGE_MODEL_ID);
   const [error, setError] = useState<string | null>(null);
   const [generatingTaskId, setGeneratingTaskId] = useState<string | null>(null);
   const [generatingStartedAt, setGeneratingStartedAt] = useState<number | null>(null);
@@ -281,7 +285,8 @@ export function useAgentChat(skillContext?: AgentSkillContext) {
       setMessages(session.messages);
       setImages(session.images);
       seqRef.current = session.images.reduce((max, img) => Math.max(max, parseImgSeq(img.imgId)), 0);
-      if (session.imageModel) setImageModelState(session.imageModel as ModelId);
+      imageModelRef.current = SERVER_MANAGED_IMAGE_MODEL_ID;
+      setImageModelState(SERVER_MANAGED_IMAGE_MODEL_ID);
 
       if (pending) {
         // 恢复待确认的提案，使用户刷新后仍可看到「等待你确认」卡片
@@ -443,27 +448,19 @@ export function useAgentChat(skillContext?: AgentSkillContext) {
           const text = fullText.trim();
           const reasoning = reasoningBuf.trim();
           if (parsedProposal) {
-            // 模型自动选择：Agent 指定模型 id 或用户要求分辨率档位时自动切换
-            const resolvedModel = resolveAgentModel(
-              imageModelRef.current,
-              parsedProposal.requestedModelId,
-              parsedProposal.requestedOutputSize,
-              modelCatalog,
-            );
-            if (resolvedModel !== imageModelRef.current) {
-              imageModelRef.current = resolvedModel;
-              setImageModelState(resolvedModel);
-              void saveImageModel(resolvedModel);
-            }
+            const lockedProposal: AgentProposal = {
+              ...parsedProposal,
+              requestedModelId: SERVER_MANAGED_IMAGE_MODEL_ID,
+            };
             // 有提案：不保存为单独消息，暂存分析文本供生图成功后合并
             pendingAnalysisRef.current = text;
             pendingReasoningRef.current = reasoning;
             isReeditRef.current = false;
-            setProposal(parsedProposal);
+            setProposal(lockedProposal);
             setPhase('proposal');
             // 持久化 pending proposal，刷新页面后可以恢复
             void savePendingProposal({
-              proposal: parsedProposal,
+              proposal: lockedProposal,
               pendingAnalysis: text,
               pendingReasoning: reasoning,
               isReedit: false,
@@ -793,7 +790,7 @@ export function useAgentChat(skillContext?: AgentSkillContext) {
   const approveProposal = useCallback(async (
     finalPrompt: string,
     selectedImageIds: string[],
-    model: string,
+    _model: string,
     params: AgentResolvedLayout,
   ) => {
     if (phase !== 'proposal') return;
@@ -820,7 +817,7 @@ export function useAgentChat(skillContext?: AgentSkillContext) {
       gptImageStyle: params.gptImageStyle,
       gptImageBackground: params.gptImageBackground,
       parallelCount: params.parallelCount,
-      requestedModelId: proposal?.requestedModelId,
+      requestedModelId: SERVER_MANAGED_IMAGE_MODEL_ID,
     };
     proposalRef.current = approvedProposal;
     setProposal(null);
@@ -842,7 +839,7 @@ export function useAgentChat(skillContext?: AgentSkillContext) {
         if (bytes) references.push({ data: bytes.data, mimeType: bytes.mimeType });
       }
       const mode = references.length > 0 ? 'image-to-image' : 'text-to-image';
-      const provider = resolveImageTaskProvider(model);
+      const provider = resolveImageTaskProvider(SERVER_MANAGED_IMAGE_MODEL_ID);
 
       const taskId = await createNovaTask({
         apiKey: provider.apiKey,
@@ -869,7 +866,7 @@ export function useAgentChat(skillContext?: AgentSkillContext) {
         pendingAnalysis: pendingAnalysisRef.current,
         pendingReasoning: pendingReasoningRef.current,
         selectedImageIds,
-        model,
+        model: SERVER_MANAGED_IMAGE_MODEL_ID,
         outputSize: params.outputSize,
         customSize: params.customSize,
         aspectRatio: params.aspectRatio,
@@ -897,7 +894,7 @@ export function useAgentChat(skillContext?: AgentSkillContext) {
           templateId: approvedProposal.templateId,
           prompt,
           referencedImageIds: selectedImageIds,
-          model,
+          model: SERVER_MANAGED_IMAGE_MODEL_ID,
           outputSize: params.outputSize,
           customSize: params.customSize,
           aspectRatio: params.aspectRatio,
@@ -955,11 +952,6 @@ export function useAgentChat(skillContext?: AgentSkillContext) {
   const skipDescribing = useCallback(() => {
     describeAbortRef.current?.abort();
     describeAbortRef.current = null;
-  }, []);
-
-  const setImageModel = useCallback((model: ModelId) => {
-    setImageModelState(model);
-    void saveImageModel(model);
   }, []);
 
   const toggleWebSearch = useCallback(() => {
@@ -1048,21 +1040,11 @@ export function useAgentChat(skillContext?: AgentSkillContext) {
       gptImageStyle: advancedParams.style,
       gptImageBackground: advancedParams.background,
       parallelCount: pd.parallelCount,
-      requestedModelId: pd.model,
+      requestedModelId: SERVER_MANAGED_IMAGE_MODEL_ID,
     };
-    // 重新编辑时恢复原始生图模型
-    const reeditCatalog = buildModelCatalog();
-    const resolvedModel = resolveAgentModel(
-      imageModelRef.current,
-      newProposal.requestedModelId,
-      newProposal.requestedOutputSize,
-      reeditCatalog,
-    );
-    if (resolvedModel !== imageModelRef.current) {
-      imageModelRef.current = resolvedModel;
-      setImageModelState(resolvedModel);
-      void saveImageModel(resolvedModel);
-    }
+    imageModelRef.current = SERVER_MANAGED_IMAGE_MODEL_ID;
+    setImageModelState(SERVER_MANAGED_IMAGE_MODEL_ID);
+    void saveImageModel(SERVER_MANAGED_IMAGE_MODEL_ID);
     // 清除上次待定分析，因为用户要重新编辑
     pendingAnalysisRef.current = '';
     pendingReasoningRef.current = '';
@@ -1162,7 +1144,6 @@ export function useAgentChat(skillContext?: AgentSkillContext) {
     checkNow,
     stopStreaming,
     skipDescribing,
-    setImageModel,
     toggleWebSearch,
     toggleIntentRecognition,
     clearSession,
